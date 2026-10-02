@@ -187,6 +187,9 @@ def barrido_manual(con, config: dict, activos: dict, cal: dict, presupuesto: int
         if presupuesto - gastado < costo_liga:
             break
         gastado += apostar_con_captura(con, config, deporte, activos.get(deporte, deporte), "barrido")
+    if not gastado:
+        anotar(con, "sistema", "Búsqueda manual sin descargas: todas las ligas con partidos próximos se revisaron hace "
+                               f"menos de {config['horas_min_entre_descargas']:g} h (sus momios siguen frescos).")
     return gastado
 
 
@@ -220,7 +223,12 @@ def ciclo(con, config: dict, forzar_barrido: bool = False) -> None:
     cal = calendario(con, config, activos)  # gratis
     if forzar_barrido:
         disponibles = creditos_hoy(con, restantes, config["reserva_creditos"])
-        restantes -= barrido_manual(con, config, activos, cal, max(disponibles // 2, min(disponibles, 1)))
+        presupuesto = max(disponibles // 2, min(disponibles, 1))
+        if presupuesto < 1:  # cupo de hoy agotado: la búsqueda manual adelanta créditos de los próximos días
+            presupuesto = max(0, min(config["decision"]["prestamo_manual"], restantes - config["reserva_creditos"]))
+            anotar(con, "sistema", f"Búsqueda manual: el cupo de hoy ya se usó; se adelantan hasta {presupuesto} "
+                                   f"créditos de los próximos días.")
+        restantes -= barrido_manual(con, config, activos, cal, presupuesto)
     else:
         restantes -= decidir_descargas(con, config, activos, cal, restantes)
     # Gratis: con los momios ya descargados, apuestas que ahora sí entran en la ventana de alguna estrategia

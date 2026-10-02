@@ -19,7 +19,8 @@
     "horas_calendario": 3,
     "capacidad_ahorro": 6,
     "porcion_busqueda": 0.75,
-    "puntaje_minimo": 0.5
+    "puntaje_minimo": 0.5,
+    "prestamo_manual": 3
   },
   "estudio": {
     "dias_entre_estudios": 7
