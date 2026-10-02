@@ -85,8 +85,31 @@ CREATE TABLE IF NOT EXISTS apuestas (
     prob_cierre REAL,               -- probabilidad justa al cierre
     clv REAL,                       -- valor contra el cierre; vacío si no hubo foto posterior
     clv_fuente TEXT,                -- pinnacle (foto de cierre) o draftkings (cierre publicado por ESPN)
+    razon TEXT,                     -- por qué se hizo la apuesta, en palabras
     cierre_revisado INTEGER NOT NULL DEFAULT 0,
     UNIQUE (estrategia, evento_id)
+);
+
+-- Probabilidad justa de Pinnacle de cada partido descargado (se haya apostado o no) y su resultado:
+-- mide la calibración con cientos de partidos en lugar de solo las apuestas.
+CREATE TABLE IF NOT EXISTS pronosticos (
+    evento_id TEXT PRIMARY KEY,
+    deporte TEXT NOT NULL,
+    local TEXT NOT NULL,
+    visitante TEXT NOT NULL,
+    inicio TEXT NOT NULL,
+    prob_local REAL NOT NULL,
+    prob_empate REAL,
+    prob_visitante REAL NOT NULL,
+    capturado TEXT NOT NULL,
+    resultado TEXT                  -- local, empate, visitante, sin_dato
+);
+
+-- Diario del apostador virtual: lo que hizo y pensó cada día (JSON con secciones)
+CREATE TABLE IF NOT EXISTS diario (
+    dia TEXT PRIMARY KEY,           -- fecha local AAAA-MM-DD
+    texto TEXT NOT NULL,
+    actualizado TEXT NOT NULL
 );
 
 CREATE TABLE IF NOT EXISTS bitacora (
@@ -120,7 +143,7 @@ def conectar() -> sqlite3.Connection:
     con.row_factory = sqlite3.Row
     con.execute("PRAGMA journal_mode=WAL")
     con.executescript(ESQUEMA)
-    for tabla, columna in (("eventos", "detalle"), ("apuestas", "clv_fuente")):  # bases creadas antes de esas columnas
+    for tabla, columna in (("eventos", "detalle"), ("apuestas", "clv_fuente"), ("apuestas", "razon")):  # bases creadas antes de esas columnas
         if columna not in {c[1] for c in con.execute(f"PRAGMA table_info({tabla})")}:
             con.execute(f"ALTER TABLE {tabla} ADD COLUMN {columna} TEXT")
     return con

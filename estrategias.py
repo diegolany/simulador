@@ -107,7 +107,8 @@ def colocar_apuestas(con, config: dict, capturado: str) -> tuple[dict, int]:
         f"SELECT estrategia, evento_id FROM apuestas WHERE evento_id IN ({','.join('?' * len(foto))})",
         list(foto))}
     eventos = {f["id"]: f for f in con.execute(
-        f"SELECT id, deporte, liga, inicio FROM eventos WHERE id IN ({','.join('?' * len(foto))})", list(foto))}
+        f"SELECT id, deporte, liga, local, visitante, inicio FROM eventos WHERE id IN ({','.join('?' * len(foto))})",
+        list(foto))}
     colocadas, senales = {}, 0
 
     for evento_id, casas in foto.items():
@@ -119,6 +120,15 @@ def colocar_apuestas(con, config: dict, capturado: str) -> tuple[dict, int]:
             continue
         selecciones = list(ref["momios"])
         justas = dict(zip(selecciones, probabilidades_justas([ref["momios"][s] for s in selecciones])))
+        if ev["local"] in justas and ev["visitante"] in justas:  # pronóstico para medir la calibración
+            con.execute("""INSERT INTO pronosticos (evento_id, deporte, local, visitante, inicio, prob_local, prob_empate,
+                                                    prob_visitante, capturado) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                           ON CONFLICT(evento_id) DO UPDATE SET prob_local = excluded.prob_local,
+                               prob_empate = excluded.prob_empate, prob_visitante = excluded.prob_visitante,
+                               capturado = excluded.capturado, inicio = excluded.inicio
+                           WHERE pronosticos.resultado IS NULL""",
+                        (evento_id, ev["deporte"], ev["local"], ev["visitante"], ev["inicio"], justas[ev["local"]],
+                         justas.get("Draw"), justas[ev["visitante"]], capturado))
         ofertas = []
         for casa, datos in casas.items():
             if casa in excluidas or not datos["actualizado"]:
@@ -136,6 +146,8 @@ def colocar_apuestas(con, config: dict, capturado: str) -> tuple[dict, int]:
 
         for est in estrategias:
             p = est["p"]
+            if est["tipo"] not in ("valor", "favorito"):
+                continue  # la cartera Gratuita apuesta aparte, con momios gratuitos
             if (est["nombre"], evento_id) in ya_apostadas or not p["horas_min"] <= horas <= p["horas_max"]:
                 continue
             if ev["liga"] in p["ligas_bloqueadas"]:
@@ -150,12 +162,15 @@ def colocar_apuestas(con, config: dict, capturado: str) -> tuple[dict, int]:
                 elegida = max(candidatas, key=lambda o: o["valor"])
                 casa, sel, momio = elegida["casa"], elegida["sel"], elegida["momio"]
                 fraccion = fraccion_kelly(justas[sel], momio, p["kelly"], p["tope"])
+                razon = _razon_valor(casa, sel, momio, justas[sel], horas, fraccion)
             else:  # favorito: lo que haría un apostador casual
                 sel = max((s for s in selecciones if s != "Draw"), key=lambda s: justas[s])
                 precios = [o["momio"] for o in ofertas if o["sel"] == sel]
                 if len(precios) < 2:
                     continue
                 casa, momio, fraccion = "promedio", round(median(precios), 2), p["fijo"]
+                razon = (f"Control: apuesto al favorito ({justas[sel]:.0%}) al momio promedio de {len(precios)} casas "
+                         f"({momio:.2f}), sin buscar valor, como lo haría un apostador casual.")
 
             actual, en_juego = banca(con, est["nombre"], config["banca_inicial"])
             monto = int(fraccion * actual / 10) * 10
@@ -163,15 +178,98 @@ def colocar_apuestas(con, config: dict, capturado: str) -> tuple[dict, int]:
                 continue
             con.execute(
                 """INSERT INTO apuestas (estrategia, evento_id, deporte, liga, mercado, seleccion, casa, momio,
-                                         momio_ref, prob_justa, valor, monto, colocada, inicio)
-                   VALUES (?, ?, ?, ?, 'h2h', ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                                         momio_ref, prob_justa, valor, monto, colocada, inicio, razon)
+                   VALUES (?, ?, ?, ?, 'h2h', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 (est["nombre"], evento_id, ev["deporte"], ev["liga"], sel, casa, momio, ref["momios"][sel],
-                 justas[sel], valor_esperado(justas[sel], momio), monto, capturado, ev["inicio"]),
+                 justas[sel], valor_esperado(justas[sel], momio), monto, capturado, ev["inicio"], razon),
             )
             ya_apostadas.add((est["nombre"], evento_id))
             colocadas[est["nombre"]] = colocadas.get(est["nombre"], 0) + 1
     con.commit()
     return colocadas, senales
+
+
+def _nombre(seleccion: str) -> str:
+    return "el empate" if seleccion == "Draw" else seleccion
+
+
+def _razon_valor(casa: str, sel: str, momio: float, prob: float, horas: float, fraccion: float, extra: str = "") -> str:
+    return (f"{casa} paga {momio:.2f} por {_nombre(sel)}. Pinnacle, sin su comisión, le da {prob:.0%} "
+            f"(precio justo {1 / prob:.2f}): valor {valor_esperado(prob, momio):+.1%}. Faltan {horas:.0f} h para el "
+            f"partido. Apuesto {fraccion:.1%} de la banca (¼ de Kelly).{extra}")
+
+
+def apostar_gratis(con, config: dict) -> dict:
+    """Momios gratuitos: el de DraftKings que ESPN publica sin costo, comparado contra el último precio justo de
+    Pinnacle ya descargado si tiene menos de `max_horas_referencia` horas. Cada estrategia de valor (la Principal
+    y las retadoras) aplica sus mismas reglas y apuesta con su misma banca; la apuesta queda marcada como
+    DraftKings. Devuelve {estrategia: apuestas nuevas}."""
+    estrategias = [e for e in activas(con) if e["tipo"] == "valor"]
+    if not estrategias:
+        return {}
+    momento = ahora()
+    referencia = config["casa_referencia"]
+    filas = con.execute(
+        """SELECT e.id, e.deporte, e.liga, e.local, e.visitante, e.inicio, MAX(m.capturado) AS cap
+           FROM eventos e JOIN momios m ON m.evento_id = e.id AND m.casa = ? AND m.mercado = 'h2h'
+           WHERE e.inicio > ? AND e.inicio <= ? AND m.capturado >= ?
+           GROUP BY e.id""",
+        (referencia, iso(momento + timedelta(minutes=10)),
+         iso(momento + timedelta(hours=max(e["p"]["horas_max"] for e in estrategias))),
+         iso(momento - timedelta(hours=config["max_horas_referencia"])))).fetchall()
+    ya_apostadas = {(f[0], f[1]) for f in con.execute("SELECT estrategia, evento_id FROM apuestas WHERE inicio > ?",
+                                                      (iso(momento),))}
+    cache, colocadas = {}, {}
+    for ev in filas:
+        pendientes = [e for e in estrategias if (e["nombre"], ev["id"]) not in ya_apostadas]
+        if not pendientes or not marcadores.cubierto_momios(ev["deporte"]):
+            continue
+        ref = {r[0]: r[1] for r in con.execute(
+            "SELECT seleccion, momio FROM momios WHERE evento_id = ? AND casa = ? AND mercado = 'h2h' AND capturado = ?",
+            (ev["id"], referencia, ev["cap"]))}
+        inicio = a_fecha(ev["inicio"])
+        encontrado = marcadores.precios(ev["deporte"], ev["local"], ev["visitante"], inicio, cache)
+        if len(ref) < 2 or not encontrado or set(encontrado[1]) != set(ref):
+            continue  # sin precio gratuito o con otras opciones que la referencia
+        casa, precios = encontrado
+        selecciones = list(ref)
+        justas = dict(zip(selecciones, probabilidades_justas([ref[s] for s in selecciones])))
+        horas = (inicio - momento).total_seconds() / 3600
+        edad = (momento - a_fecha(ev["cap"])).total_seconds() / 3600
+        registrado = False
+        for est in pendientes:
+            p = est["p"]
+            if ev["liga"] in p["ligas_bloqueadas"] or casa in p["casas_bloqueadas"] or not p["horas_min"] <= horas <= p["horas_max"]:
+                continue
+            candidatas = [(s, round(precios[s], 3)) for s in selecciones if p["momio_min"] <= precios[s] <= p["momio_max"]
+                          and p["umbral"] <= valor_esperado(justas[s], precios[s]) <= config["valor_sospechoso"]]
+            if not candidatas:
+                continue
+            sel, momio = max(candidatas, key=lambda c: valor_esperado(justas[c[0]], c[1]))
+            fraccion = fraccion_kelly(justas[sel], momio, p["kelly"], p["tope"])
+            actual, en_juego = banca(con, est["nombre"], config["banca_inicial"])
+            monto = int(fraccion * actual / 10) * 10
+            if monto < config["apuesta_minima"] or monto > actual - en_juego:
+                continue
+            colocada = iso(momento)
+            if not registrado:  # el momio tomado queda guardado para poder revisarlo después
+                for s, m in precios.items():
+                    con.execute("""INSERT INTO momios (evento_id, casa, mercado, seleccion, punto, momio, capturado,
+                                                       actualizado_casa) VALUES (?, ?, 'h2h', ?, NULL, ?, ?, ?)""",
+                                (ev["id"], casa, s, round(m, 3), colocada, colocada))
+                registrado = True
+            con.execute(
+                """INSERT INTO apuestas (estrategia, evento_id, deporte, liga, mercado, seleccion, casa, momio, momio_ref,
+                                         prob_justa, valor, monto, colocada, inicio, razon)
+                   VALUES (?, ?, ?, ?, 'h2h', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (est["nombre"], ev["id"], ev["deporte"], ev["liga"], sel, casa, momio, ref[sel], justas[sel],
+                 valor_esperado(justas[sel], momio), monto, colocada, ev["inicio"],
+                 _razon_valor(casa, sel, momio, justas[sel], horas, fraccion,
+                              f" Momio gratuito (ESPN); precio justo de Pinnacle de hace {edad:.1f} h.")))
+            ya_apostadas.add((est["nombre"], ev["id"]))
+            colocadas[est["nombre"]] = colocadas.get(est["nombre"], 0) + 1
+    con.commit()
+    return colocadas
 
 
 def reanalizar(con, config: dict, max_minutos: int, silencioso: bool = False) -> tuple[int, int]:

@@ -219,6 +219,7 @@ footer { margin-top: 28px; color: var(--tenue); font-size: 12.5px; line-height: 
     <button data-pestana="resumen" class="activa">Resumen</button>
     <button data-pestana="apuestas">Apuestas<span class="conteo" id="conteo-activas"></span></button>
     <button data-pestana="laboratorio">Laboratorio</button>
+    <button data-pestana="diario">Diario</button>
     <button data-pestana="bitacora">Bitácora</button>
   </nav>
 </header>
@@ -230,7 +231,7 @@ footer { margin-top: 28px; color: var(--tenue); font-size: 12.5px; line-height: 
     <div class="tarjeta heroe">
       <div class="heroe-cabeza">
         <div>
-          <div class="etiqueta">Banca de la estrategia Principal</div>
+          <div class="etiqueta" id="etiqueta-banca">Banca de la cartera Principal</div>
           <div class="cifra" id="banca">—</div>
           <span class="delta" id="delta"></span>
           <div class="chica" id="en-juego" style="margin-top:10px"></div>
@@ -300,11 +301,20 @@ footer { margin-top: 28px; color: var(--tenue); font-size: 12.5px; line-height: 
     </div>
     <h3 class="seccion">Ranking de estrategias en vivo</h3>
     <div class="tarjeta"><div class="tabla ranking" id="laboratorio"></div></div>
+    <div id="detalle-estrategia"></div>
     <h3 class="seccion">Calibración</h3>
     <div class="tarjeta">
       <p class="ayuda">Si estimamos 40% y ganamos cerca de 40% de esas apuestas, el cálculo está bien calibrado. Necesita cientos de apuestas.</p>
       <div class="tabla" id="calibracion"></div>
     </div>
+  </section>
+
+  <section data-panel="diario" hidden>
+    <div class="tarjeta" style="margin-bottom:16px">
+      <p class="ayuda" style="margin:0">El apostador virtual escribe aquí cada día cómo trabajó, qué apostó y por qué, qué aprendió y
+        qué opina. La entrada de hoy se actualiza en cada vuelta del bot; las de días anteriores quedan como registro de cómo evoluciona.</p>
+    </div>
+    <div class="pila" id="diario"></div>
   </section>
 
   <section data-panel="bitacora" hidden>
@@ -510,7 +520,7 @@ function boletos(d) {
     const estado = a.fase === 'por_empezar' ? `<span>⏳ ${cuenta(a.inicio) || 'Empezando'}</span>`
       : enVivo ? `<span class="vivo">EN VIVO${a.marcador ? ` · ${esc(a.marcador)}` : ''}</span>` : '<span class="tenue">Esperando resultado</span>';
     return `<article class="boleto ${enVivo ? 'en-vivo' : ''}">
-      <div class="boleto-cabeza"><span>${emoji(a.deporte)} ${esc(a.liga)}</span>${estado}</div>
+      <div class="boleto-cabeza"><span>${emoji(a.deporte)} ${esc(a.liga)} ${origen(a.fuente)}</span>${estado}</div>
       <div class="equipos">${esc(a.local)} <span class="vs">vs</span> ${esc(a.visitante)}</div>
       <div class="chica" style="padding:2px 14px 0">Partido: ${fecha(a.inicio)}${enVivo && a.detalle ? ' · ' + esc(a.detalle) : ''}
         · Apostada: ${fecha(a.colocada)}</div>
@@ -520,6 +530,7 @@ function boletos(d) {
              href="https://duckduckgo.com/?q=${encodeURIComponent('!ducky site:oddsportal.com ' + a.local + ' ' + a.visitante)}">🔎 Ver en OddsPortal</a></div>
         <div class="momio">${a.momio.toFixed(2)}<small>${americano(a.momio)}</small></div>
       </div>
+      ${a.razon ? `<div class="chica" style="padding:0 14px 10px">💭 ${esc(a.razon)}</div>` : ''}
       <div class="boleto-pie">
         <div>Monto<b>${dinero.format(a.monto)}</b></div>
         <div>Ganaría<b>${dinero.format(a.potencial)}</b></div>
@@ -537,7 +548,7 @@ function historial(d) {
   $('#historial').innerHTML = tabla([
     { t: 'Apostada', v: h => `${fecha(h.colocada)}<div class="chica">cerró ${fecha(h.liquidada)}</div>` },
     { t: 'Partido', v: h => `${emoji(h.deporte)} ${esc(h.partido)}<div class="chica">${esc(h.liga)}</div>` },
-    { t: 'Apuesta', v: h => `${esc(h.seleccion)}<div class="chica">${esc(h.casa)} · ${h.momio.toFixed(2)} · ${esc(h.estrategia)}</div>` },
+    { t: 'Apuesta', v: h => `${esc(h.seleccion)} ${origen(h.fuente)}<div class="chica">${esc(h.casa)} · ${h.momio.toFixed(2)} · ${esc(h.estrategia)}</div>` },
     { t: 'Resultado', v: h => `${res[h.estado]}<div class="chica">${esc(h.marcador || h.nota || '')}</div>` },
     { t: 'Monto', num: 1, v: h => dinero.format(h.monto) },
     { t: 'Ganancia', num: 1, v: h => conSigno(h.ganancia, sdinero(h.ganancia)) },
@@ -561,7 +572,8 @@ function laboratorio(d) {
   };
   $('#laboratorio').innerHTML = tabla([
     { t: '#', v: (e) => `<div class="pos">${orden.indexOf(e) + 1}</div>` },
-    { t: 'Estrategia', v: e => `<b>${esc(e.nombre)}</b> <span class="insignia ${e.rol}">${roles[e.rol]}</span><div class="chica">${esc(e.descripcion)}</div>` +
+    { t: 'Estrategia', v: e => `<a href="#laboratorio" data-ver="${esc(e.nombre)}" style="color:var(--tinta);font-weight:700">${esc(e.nombre)} ›</a>
+        <span class="insignia ${e.rol}">${roles[e.rol]}</span><div class="chica">${esc(e.descripcion)}</div>` +
         ((e.parametros.ligas_bloqueadas || []).length ? `<div class="chica">Evita: ${esc(e.parametros.ligas_bloqueadas.join(', '))}</div>` : '') },
     { t: 'CLV', num: 1, v: e => `${conSigno(e.clv, spct(e.clv))}<div class="chica">${e.clv_n} medidas</div>${barra(e.clv)}` },
     { t: 'Apuestas', num: 1, v: e => `${e.apuestas}${e.abiertas ? `<div class="chica">${e.abiertas} activas</div>` : ''}` },
@@ -571,7 +583,10 @@ function laboratorio(d) {
   $('#calibracion').innerHTML = tabla([
     { t: 'Probabilidad', v: c => c.tramo }, { t: 'Apuestas', num: 1, v: c => c.n },
     { t: 'Estimada', num: 1, v: c => pct(c.estimada) }, { t: 'Real', num: 1, v: c => pct(c.real) },
-  ], d.calibracion, 'Aparece cuando haya apuestas liquidadas.');
+  ], d.calibracion, 'Aparece cuando los partidos pronosticados tengan resultado.');
+  if (d.calibracion_partidos) $('#calibracion').insertAdjacentHTML('beforeend',
+    `<div class="chica" style="margin-top:10px">Basada en ${d.calibracion_partidos.toLocaleString('es-MX')} partidos pronosticados con resultado (se haya apostado o no).</div>`);
+  detalleEstrategia(d);
 }
 
 function evidencia(d) {
@@ -593,6 +608,49 @@ function evidencia(d) {
     { t: 'CLV', num: 1, v: r => conSigno(r.clv, spct(r.clv)) },
     { t: 'Confianza', num: 1, v: r => `${confianza(r)}<div class="chica">t = ${r.t.toFixed(1)}</div>` },
   ], filas, '');
+}
+
+const origen = f => f === 'draftkings' ? '<span class="chip bueno" title="Momio gratuito de DraftKings (ESPN)">🆓 DraftKings</span>'
+  : '<span class="chip azul" title="Momio de una descarga pagada con créditos">💳 Créditos</span>';
+
+let estrategiaVista = null;
+function detalleEstrategia(d) {
+  const caja = $('#detalle-estrategia');
+  const lista = estrategiaVista && (d.apuestas_por_estrategia || {})[estrategiaVista];
+  if (!lista) { caja.innerHTML = ''; return; }
+  const res = { abierta: '<span class="chip azul">● Activa</span>', ganada: '<span class="chip bueno">✓ Ganada</span>',
+    perdida: '<span class="chip malo">✗ Perdida</span>', anulada: '<span class="chip">↺ Anulada</span>' };
+  caja.innerHTML = `<h3 class="seccion">Historial de ${esc(estrategiaVista)} (${lista.length} apuestas)
+      <a href="#laboratorio" data-cerrar style="float:right;text-transform:none;letter-spacing:0">Cerrar ✕</a></h3>
+    <div class="tarjeta"><div class="tabla">${tabla([
+      { t: 'Apostada', v: h => `${fecha(h.colocada)}${h.liquidada ? `<div class="chica">cerró ${fecha(h.liquidada)}</div>` : ''}` },
+      { t: 'Partido', v: h => `${emoji(h.deporte)} ${esc(h.partido)}<div class="chica">${esc(h.liga)}</div>` },
+      { t: 'Apuesta', v: h => `${esc(h.seleccion)} ${origen(h.fuente)}<div class="chica">${esc(h.casa)} · ${h.momio.toFixed(2)}</div>` +
+          (h.razon ? `<div class="chica">💭 ${esc(h.razon)}</div>` : '') },
+      { t: 'Resultado', v: h => `${res[h.estado]}<div class="chica">${esc(h.marcador || h.nota || '')}</div>` },
+      { t: 'Monto', num: 1, v: h => dinero.format(h.monto) },
+      { t: 'Ganancia', num: 1, v: h => h.estado === 'abierta' ? '<span class="tenue">—</span>' : conSigno(h.ganancia, sdinero(h.ganancia)) },
+      { t: 'CLV', num: 1, v: h => conSigno(h.clv, spct(h.clv)) + (h.clv_fuente === 'draftkings' ? '<div class="chica">DK</div>' : '') },
+    ], lista, '')}</div></div>`;
+}
+document.addEventListener('click', e => {
+  const ver = e.target.closest('[data-ver]'), cerrar = e.target.closest('[data-cerrar]');
+  if (!ver && !cerrar) return;
+  e.preventDefault();
+  estrategiaVista = ver ? ver.dataset.ver : null;
+  if (datos) detalleEstrategia(datos);
+  if (ver) $('#detalle-estrategia').scrollIntoView({ behavior: 'smooth' });
+});
+
+function diarioVista(d) {
+  const titulo = dia => new Date(dia + 'T12:00:00').toLocaleDateString('es-MX', { weekday: 'long', day: 'numeric', month: 'long' });
+  $('#diario').innerHTML = (d.diario || []).map(e => `<article class="tarjeta">
+      <h2 style="text-transform:capitalize">📓 ${titulo(e.dia)}</h2>
+      <div class="chica" style="margin-bottom:8px">Actualizado ${fecha(e.actualizado)}</div>
+      ${e.secciones.map(s => `<h3 class="seccion" style="margin-top:14px">${esc(s.titulo)}</h3>
+        ${(s.parrafos || []).map(p => `<p style="margin:6px 0">${esc(p)}</p>`).join('')}
+        ${s.lista ? `<ul style="margin:6px 0;padding-left:18px">${s.lista.map(x => `<li style="margin:4px 0">${esc(x)}</li>`).join('')}</ul>` : ''}`).join('')}
+    </article>`).join('') || '<div class="vacio">El diario empieza a escribirse en la siguiente vuelta del bot.</div>';
 }
 
 function bitacora(d) {
@@ -620,7 +678,7 @@ function sistema(d) {
 function pintar() {
   if (!datos) return;
   heroe(datos); kpis(datos); semanas(datos); deportes(datos); creditos(datos); dibujarCurva(datos);
-  boletos(datos); historial(datos); laboratorio(datos); evidencia(datos); bitacora(datos); sistema(datos);
+  boletos(datos); historial(datos); laboratorio(datos); evidencia(datos); diarioVista(datos); bitacora(datos); sistema(datos);
 }
 
 async function actualizar() {
@@ -683,7 +741,7 @@ $('#buscar').addEventListener('click', async () => {
 
 const desdeEnlace = () => {
   const p = location.hash.slice(1);
-  if (['resumen', 'apuestas', 'laboratorio', 'bitacora'].includes(p)) mostrar(p);
+  if (['resumen', 'apuestas', 'laboratorio', 'diario', 'bitacora'].includes(p)) mostrar(p);
 };
 addEventListener('hashchange', desdeEnlace);
 desdeEnlace();

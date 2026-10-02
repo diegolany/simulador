@@ -21,6 +21,7 @@ from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 import aprendizaje
+import diario
 import estrategias
 import estudio
 import marcadores
@@ -243,6 +244,8 @@ def ciclo(con, config: dict, forzar_barrido: bool = False) -> None:
         restantes -= decidir_descargas(con, config, activos, cal, restantes)
     # Gratis: con los momios ya descargados, apuestas que ahora sí entran en la ventana de alguna estrategia
     estrategias.reanalizar(con, config, config["minutos_reanalisis"], silencioso=True)
+    apuestas_gratuitas(con, config)
+    marcadores.resolver_pronosticos(con)  # gratis: resultados de todos los partidos pronosticados
 
     if aprendizaje.toca_revision(con, config):
         aprendizaje.revision(con, config)
@@ -257,9 +260,21 @@ def ciclo(con, config: dict, forzar_barrido: bool = False) -> None:
         guardar_estado(con, "ultima_poda", date.today().isoformat())
         podar(con, config["casa_referencia"])
 
+    diario.actualizar(con, config)
     guardar_estado(con, "restantes", restantes)
     guardar_estado(con, "ultimo_ciclo", iso(ahora()))
     con.commit()
+
+
+def apuestas_gratuitas(con, config: dict) -> None:
+    """Momios gratuitos de DraftKings (ESPN) para la Principal y el laboratorio, cada `minutos_gratis` minutos."""
+    ultima = leer_estado(con, "gratis_ultimo")
+    if ultima and ahora() - a_fecha(ultima) < timedelta(minutes=config["minutos_gratis"]):
+        return
+    colocadas = estrategias.apostar_gratis(con, config)
+    guardar_estado(con, "gratis_ultimo", iso(ahora()))
+    if colocadas:
+        log("Apuestas con momios gratuitos: " + ", ".join(f"{n} {e}" for e, n in colocadas.items()))
 
 
 def analizar_sin_gastar(con, config: dict) -> None:
@@ -269,6 +284,10 @@ def analizar_sin_gastar(con, config: dict) -> None:
     estrategias.calcular_clv(con, config)
     capturas, nuevas = estrategias.reanalizar(con, config, config["minutos_reanalisis"])
     log(f"Análisis sin gastar: {capturas} descargas revisadas, {nuevas} apuestas nuevas")
+    guardar_estado(con, "gratis_ultimo", None)  # forzar la revisión de la cartera Gratuita
+    apuestas_gratuitas(con, config)
+    marcadores.resolver_pronosticos(con)
+    diario.actualizar(con, config)
     guardar_estado(con, "ultimo_ciclo", iso(ahora()))
     con.commit()
 

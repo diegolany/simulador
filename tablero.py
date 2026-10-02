@@ -4,7 +4,7 @@ import math
 from calendar import monthrange
 from datetime import date, timedelta
 
-from aprendizaje import estadistica, evidencia
+from aprendizaje import calibracion_pronosticos, estadistica, evidencia
 from api import creditos_hoy
 from base_datos import a_fecha, ahora, iso, leer_estado
 from momios import decimal_a_americano, probabilidades_justas
@@ -131,20 +131,23 @@ def _evidencia(con) -> dict | None:
             "fecha": leer_estado(con, "estudio_fecha")}
 
 
-def estado(con, config: dict) -> dict:
-    momento = ahora()
-    inicial = config["banca_inicial"]
-    referencia = config["casa_referencia"]
-    texto_inicio = leer_estado(con, "fecha_inicio")
-    inicio = a_fecha(texto_inicio) if texto_inicio else momento
-    objetivos = config["objetivos_semana"]
+def _fila(a: dict) -> dict:
+    """Una apuesta tal como se muestra en historiales; `fuente` dice de dónde salió el momio."""
+    return {
+        "estrategia": a["estrategia"], "colocada": a["colocada"], "liquidada": a["liquidada"],
+        "partido": f"{a['local']} vs {a['visitante']}", "liga": a["liga"], "deporte": nombre_deporte(a["deporte"]),
+        "seleccion": "Empate" if a["seleccion"] == "Draw" else a["seleccion"], "casa": a["casa"],
+        "fuente": "draftkings" if a["casa"] == "draftkings" else "creditos",
+        "momio": a["momio"], "monto": a["monto"], "estado": a["estado"], "ganancia": a["ganancia"],
+        "marcador": f"{a['marcador_local']}-{a['marcador_visitante']}" if a["marcador_local"] is not None else None,
+        "clv": a["clv"], "clv_fuente": a["clv_fuente"], "nota": a["nota"], "razon": a["razon"],
+    }
 
-    todas = [dict(r) for r in con.execute(
-        """SELECT a.*, e.local, e.visitante, e.marcador_local, e.marcador_visitante, e.detalle
-           FROM apuestas a JOIN eventos e ON e.id = a.evento_id ORDER BY a.colocada""")]
-    principal = [a for a in todas if a["estrategia"] == "Principal"]
-    liquidadas = [a for a in principal if a["estado"] != "abierta"]
-    resumen = _resumen(principal)
+
+def _cartera(apuestas: list[dict], inicial: float, inicio, momento, objetivos: list[float]) -> dict:
+    """Banca, objetivos por semana, curva y resultados por deporte y liga de una cartera."""
+    liquidadas = [a for a in apuestas if a["estado"] != "abierta"]
+    resumen = _resumen(apuestas)
     banca = inicial + resumen["ganancia"]
 
     # Objetivo vs real por semana
@@ -167,7 +170,7 @@ def estado(con, config: dict) -> dict:
 
     # Por deporte y por liga
     por_deporte, por_liga = {}, {}
-    for a in principal:
+    for a in apuestas:
         if a["estado"] == "anulada":
             continue  # devueltas: no cuentan como apuestas del deporte
         por_deporte.setdefault(nombre_deporte(a["deporte"]), []).append(a)
@@ -176,6 +179,22 @@ def estado(con, config: dict) -> dict:
                       key=lambda x: -x["apuestas"])
     ligas = sorted(({"deporte": d, "liga": l, **_resumen(lista)} for (d, l), lista in por_liga.items()),
                    key=lambda x: (x["deporte"], -x["apuestas"]))
+    return {"banca": banca, "disponible": banca - resumen["en_juego"], "resumen": resumen, "semanas": semanas,
+            "curva": _curva(liquidadas, inicial, inicio, objetivos, momento), "deportes": deportes, "ligas": ligas}
+
+
+def estado(con, config: dict) -> dict:
+    momento = ahora()
+    inicial = config["banca_inicial"]
+    referencia = config["casa_referencia"]
+    texto_inicio = leer_estado(con, "fecha_inicio")
+    inicio = a_fecha(texto_inicio) if texto_inicio else momento
+    objetivos = config["objetivos_semana"]
+
+    todas = [dict(r) for r in con.execute(
+        """SELECT a.*, e.local, e.visitante, e.marcador_local, e.marcador_visitante, e.detalle
+           FROM apuestas a JOIN eventos e ON e.id = a.evento_id ORDER BY a.colocada""")]
+    principal = _cartera([a for a in todas if a["estrategia"] == "Principal"], inicial, inicio, momento, objetivos)
 
     # Apuestas activas con el movimiento del mercado desde que se apostó
     activas = []
@@ -207,19 +226,16 @@ def estado(con, config: dict) -> dict:
             "momio": a["momio"], "americano": decimal_a_americano(a["momio"]), "monto": a["monto"],
             "potencial": a["monto"] * (a["momio"] - 1), "prob": a["prob_justa"], "valor": a["valor"],
             "momio_ref": a["momio_ref"], "momio_ref_actual": momio_ref_actual, "movimiento": movimiento,
+            "razon": a["razon"], "fuente": "draftkings" if a["casa"] == "draftkings" else "creditos",
         })
     activas.sort(key=lambda x: x["inicio"])
 
-    historial = [{
-        "estrategia": a["estrategia"], "liquidada": a["liquidada"], "colocada": a["colocada"],
-        "clv_fuente": a["clv_fuente"], "partido": f"{a['local']} vs {a['visitante']}", "liga": a["liga"],
-        "deporte": nombre_deporte(a["deporte"]),
-        "seleccion": "Empate" if a["seleccion"] == "Draw" else a["seleccion"], "casa": a["casa"],
-        "momio": a["momio"], "monto": a["monto"], "estado": a["estado"], "ganancia": a["ganancia"],
-        "marcador": (f"{a['marcador_local']}-{a['marcador_visitante']}"
-                     if a["marcador_local"] is not None else None),
-        "clv": a["clv"], "nota": a["nota"],
-    } for a in sorted((a for a in todas if a["estado"] != "abierta"), key=lambda a: a["liquidada"], reverse=True)[:150]]
+    historial = [_fila(a) for a in sorted((a for a in todas if a["estado"] != "abierta"),
+                                          key=lambda a: a["liquidada"], reverse=True)[:150]]
+    # Todas las apuestas de cada estrategia (abiertas y cerradas) para ver su historial en el laboratorio
+    por_estrategia = {}
+    for a in sorted(todas, key=lambda a: a["colocada"], reverse=True):
+        por_estrategia.setdefault(a["estrategia"], []).append(_fila(a))
 
     # Laboratorio: todas las estrategias compitiendo, cada una con su banca
     laboratorio = []
@@ -230,22 +246,10 @@ def estado(con, config: dict) -> dict:
                             "descripcion": e["descripcion"], "parametros": json.loads(e["parametros"]),
                             "banca": inicial + r["ganancia"], **r})
 
-    # Calibración: probabilidad que estimamos contra lo que realmente pasó
-    vistas, calibracion = set(), []
-    tramos = [(0, 0.2), (0.2, 0.4), (0.4, 0.6), (0.6, 0.8), (0.8, 1.01)]
-    grupos = {t: [] for t in tramos}
-    for a in todas:
-        if a["estado"] not in ("ganada", "perdida") or (a["evento_id"], a["seleccion"]) in vistas:
-            continue
-        vistas.add((a["evento_id"], a["seleccion"]))
-        for t in tramos:
-            if t[0] <= a["prob_justa"] < t[1]:
-                grupos[t].append(a)
-    for (bajo, alto), lista in grupos.items():
-        if lista:
-            calibracion.append({"tramo": f"{bajo:.0%}–{min(alto, 1):.0%}", "n": len(lista),
-                                "estimada": sum(a["prob_justa"] for a in lista) / len(lista),
-                                "real": sum(1 for a in lista if a["estado"] == "ganada") / len(lista)})
+    # Calibración con todos los partidos pronosticados (se haya apostado o no)
+    partidos_calibrados, calibracion = calibracion_pronosticos(con)
+    diario = [{"dia": r[0], "secciones": json.loads(r[1]), "actualizado": r[2]}
+              for r in con.execute("SELECT dia, texto, actualizado FROM diario ORDER BY dia DESC LIMIT 14")]
 
     bitacora = [dict(r) for r in con.execute("SELECT fecha, tipo, mensaje FROM bitacora ORDER BY id DESC LIMIT 40")]
 
@@ -261,18 +265,15 @@ def estado(con, config: dict) -> dict:
         "inicio": iso(inicio),
         "dia": (momento - inicio).days + 1,
         "banca_inicial": inicial,
-        "banca": banca,
-        "disponible": banca - resumen["en_juego"],
-        "resumen": resumen,
+        **principal,
+        "apuestas_por_estrategia": por_estrategia,
         "clv_objetivo": config["clv_objetivo"],
-        "semanas": semanas,
-        "curva": _curva(liquidadas, inicial, inicio, objetivos, momento),
         "activas": activas,
-        "deportes": deportes,
-        "ligas": ligas,
         "historial": historial,
         "laboratorio": laboratorio,
         "calibracion": calibracion,
+        "calibracion_partidos": partidos_calibrados,
+        "diario": diario,
         "bitacora": bitacora,
         "creditos": _creditos(con, config, inicio, restantes),
         "evidencia": _evidencia(con),

@@ -137,6 +137,23 @@ def aprendizaje_diario(con) -> None:
     con.commit()
 
 
+def calibracion_pronosticos(con) -> tuple[int, list[dict]]:
+    """(partidos con resultado, tramos) comparando la probabilidad justa estimada contra lo que pasó."""
+    tramos = [(0, 0.2), (0.2, 0.4), (0.4, 0.6), (0.6, 0.8), (0.8, 1.01)]
+    grupos, partidos = {t: [] for t in tramos}, 0
+    for f in con.execute("""SELECT prob_local, prob_empate, prob_visitante, resultado FROM pronosticos
+                            WHERE resultado IN ('local', 'empate', 'visitante')"""):
+        if f["resultado"] == "empate" and f["prob_empate"] is None:
+            continue  # empate en un mercado sin empate (ej. NFL): no cuenta
+        partidos += 1
+        for prob, nombre in ((f["prob_local"], "local"), (f["prob_empate"], "empate"), (f["prob_visitante"], "visitante")):
+            if prob is not None:
+                tramo = next(t for t in tramos if t[0] <= prob < t[1])
+                grupos[tramo].append((prob, f["resultado"] == nombre))
+    return partidos, [{"tramo": f"{a:.0%}–{min(b, 1):.0%}", "n": len(g), "estimada": sum(p for p, _ in g) / len(g),
+                       "real": sum(1 for _, x in g if x) / len(g)} for (a, b), g in grupos.items() if g]
+
+
 def toca_revision(con, config: dict) -> bool:
     ultima = leer_estado(con, "ultima_revision")
     dias = config["aprendizaje"]["dias_entre_revisiones"]

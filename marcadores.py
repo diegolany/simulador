@@ -30,6 +30,24 @@ RUTAS = {
     "soccer_usa_mls": "soccer/usa.1",
     "soccer_brazil_campeonato": "soccer/bra.1",
     "soccer_argentina_primera_division": "soccer/arg.1",
+    "soccer_efl_champ": "soccer/eng.2",
+    "soccer_germany_bundesliga2": "soccer/ger.2",
+    "soccer_italy_serie_b": "soccer/ita.2",
+    "soccer_spain_segunda_division": "soccer/esp.2",
+    "soccer_france_ligue_two": "soccer/fra.2",
+    "soccer_turkey_super_league": "soccer/tur.1",
+    "soccer_belgium_first_div": "soccer/bel.1",
+    "soccer_spl": "soccer/sco.1",
+    "soccer_denmark_superliga": "soccer/den.1",
+    "soccer_sweden_allsvenskan": "soccer/swe.1",
+    "soccer_norway_eliteserien": "soccer/nor.1",
+    "soccer_japan_j_league": "soccer/jpn.1",
+    "soccer_korea_kleague1": "soccer/kor.1",
+    "soccer_australia_aleague": "soccer/aus.1",
+    "soccer_chile_campeonato": "soccer/chi.1",
+    "soccer_conmebol_copa_libertadores": "soccer/conmebol.libertadores",
+    "soccer_conmebol_copa_sudamericana": "soccer/conmebol.sudamericana",
+    "soccer_uefa_europa_conference_league": "soccer/uefa.europa.conf",
     "basketball_nba": "basketball/nba",
     "americanfootball_nfl": "football/nfl",
     "americanfootball_ncaaf": "football/college-football",
@@ -250,6 +268,42 @@ def probabilidad_cierre(deporte: str, local: str, visitante: str, inicio, selecc
     selecciones = list(por_seleccion)
     justas = dict(zip(selecciones, probabilidades_justas([por_seleccion[s] for s in selecciones])))
     return justas[seleccion]
+
+
+def resolver_pronosticos(con, limite: int = 200) -> int:
+    """Pone el resultado a cada partido pronosticado (aunque no se haya apostado), gratis, para medir la
+    calibración con muchos más partidos. Devuelve cuántos resolvió."""
+    momento = ahora()
+    filas = con.execute("""SELECT evento_id, deporte, local, visitante, inicio FROM pronosticos
+                           WHERE resultado IS NULL AND inicio < ? ORDER BY inicio LIMIT ?""",
+                        (iso(momento - timedelta(hours=3)), limite)).fetchall()
+    cache, resueltos = {}, 0
+    for f in filas:
+        inicio = a_fecha(f["inicio"])
+        goles = None
+        ev = con.execute("SELECT marcador_local, marcador_visitante, terminado FROM eventos WHERE id = ?",
+                         (f["evento_id"],)).fetchone()
+        if ev and ev["terminado"]:
+            goles = (ev["marcador_local"], ev["marcador_visitante"])
+        elif cubierto(f["deporte"]):
+            partido, invertido = emparejar(f["local"], f["visitante"], inicio, candidatos(f["deporte"], inicio, cache),
+                                           30 if f["deporte"] in VENTANA_AMPLIA else 3)
+            if partido and partido["fase"] == "post" and partido["terminado"]:
+                try:
+                    goles = (int(float(partido["goles_local"])), int(float(partido["goles_visitante"])))
+                    goles = goles[::-1] if invertido else goles
+                except (TypeError, ValueError):
+                    goles = None
+        if goles:
+            resultado = "local" if goles[0] > goles[1] else "visitante" if goles[1] > goles[0] else "empate"
+        elif momento - inicio > timedelta(days=3):
+            resultado = "sin_dato"
+        else:
+            continue
+        con.execute("UPDATE pronosticos SET resultado = ? WHERE evento_id = ?", (resultado, f["evento_id"]))
+        resueltos += 1
+    con.commit()
+    return resueltos
 
 
 def actualizar(con) -> tuple[int, int]:
