@@ -9,7 +9,7 @@ import re
 import unicodedata
 import urllib.error
 import urllib.request
-from datetime import timedelta
+from datetime import timedelta, timezone
 from difflib import SequenceMatcher
 
 from base_datos import a_fecha, ahora, iso
@@ -36,18 +36,69 @@ RUTAS = {
     "icehockey_nhl": "hockey/nhl",
 }
 EXTRA = {"americanfootball_ncaaf": "&groups=80"}  # todos los partidos de primera división, no solo el top 25
+# Fuentes gratuitas para lo que el scoreboard normal de ESPN no trae
+EUROLIGA = "https://api-live.euroleague.net/v2/competitions/E/seasons/E{temporada}/games"
+UFC = "https://site.api.espn.com/apis/site/v2/sports/mma/ufc/scoreboard?dates={fecha}"
+VENTANA_AMPLIA = {"basketball_euroleague", "mma_mixed_martial_arts"}  # sin hora exacta: basta el día y los nombres
 RELLENO = {"fc", "cf", "sc", "ac", "cd", "ca", "club", "de", "del", "the", "afc", "sv", "fk"}
 
 
 def cubierto(deporte: str) -> bool:
-    return deporte in RUTAS
+    return deporte in RUTAS or deporte in VENTANA_AMPLIA
+
+
+def _json(url: str):
+    peticion = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+    with urllib.request.urlopen(peticion, timeout=30) as resp:
+        return json.load(resp)
 
 
 def _pedir(deporte: str, fecha) -> list:
-    url = URL.format(ruta=RUTAS[deporte], fecha=fecha.strftime("%Y%m%d")) + EXTRA.get(deporte, "")
-    peticion = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
-    with urllib.request.urlopen(peticion, timeout=20) as resp:
-        return json.load(resp).get("events", [])
+    return _json(URL.format(ruta=RUTAS[deporte], fecha=fecha.strftime("%Y%m%d")) + EXTRA.get(deporte, "")).get("events", [])
+
+
+def _textos(club: dict) -> list[str]:
+    """Todos los nombres con que la Euroliga identifica a un club (patrocinador, corto, editorial…)."""
+    return [v for k, v in club.items() if isinstance(v, str) and v and "url" not in k.lower() and len(v) > 3]
+
+
+def _euroliga(fecha) -> list[dict]:
+    temporada = fecha.year if fecha.month >= 8 else fecha.year - 1
+    datos = _json(EUROLIGA.format(temporada=temporada))
+    partidos = []
+    for g in datos.get("data", datos) if isinstance(datos, dict) else datos:
+        local, visita = g.get("local") or {}, g.get("road") or {}
+        if not g.get("date"):
+            continue
+        partidos.append({
+            "inicio": a_fecha(g["date"]).replace(tzinfo=timezone(timedelta(hours=1))),  # hora de Europa central
+            "local": _textos(local.get("club") or {}), "visitante": _textos(visita.get("club") or {}),
+            "goles_local": local.get("score"), "goles_visitante": visita.get("score"),
+            "fase": "post" if g.get("played") else "pre", "terminado": bool(g.get("played")),
+            "detalle": "Final" if g.get("played") else None,
+        })
+    return partidos
+
+
+def _peleas(fecha) -> list[dict]:
+    """Cada pelea de las funciones de UFC: el ganador cuenta como 1-0."""
+    peleas = []
+    for ev in _json(UFC.format(fecha=fecha.strftime("%Y%m%d"))).get("events", []):
+        for comp in ev.get("competitions", []):
+            rivales = comp.get("competitors", [])
+            if len(rivales) != 2:
+                continue
+            estado = comp.get("status", {}).get("type", {})
+            nombre = lambda r: [(r.get("athlete") or {}).get(k) for k in ("displayName", "fullName", "shortName")
+                                if (r.get("athlete") or {}).get(k)]
+            peleas.append({
+                "inicio": a_fecha(comp.get("date") or ev["date"]),
+                "local": nombre(rivales[0]), "visitante": nombre(rivales[1]),
+                "goles_local": int(bool(rivales[0].get("winner"))), "goles_visitante": int(bool(rivales[1].get("winner"))),
+                "fase": estado.get("state"), "terminado": bool(estado.get("completed")),
+                "detalle": estado.get("shortDetail") or estado.get("description"),
+            })
+    return peleas
 
 
 def _nombres(equipo: dict) -> list[str]:
@@ -92,11 +143,12 @@ def _parecido(nombre: str, opciones: list[str]) -> float:
     return mejor
 
 
-def emparejar(local: str, visitante: str, inicio, candidatos: list[dict]) -> tuple[dict | None, bool]:
+def emparejar(local: str, visitante: str, inicio, candidatos: list[dict],
+              ventana_horas: float = 3) -> tuple[dict | None, bool]:
     """Busca el partido de ESPN que corresponde. Devuelve (partido, local/visitante invertidos)."""
     mejor, puntaje_mejor, invertido = None, 0.0, False
     for c in candidatos:
-        if abs(c["inicio"] - inicio) > timedelta(hours=3):
+        if abs(c["inicio"] - inicio) > timedelta(hours=ventana_horas):
             continue
         directo = min(_parecido(local, c["local"]), _parecido(visitante, c["visitante"]))
         cruzado = min(_parecido(local, c["visitante"]), _parecido(visitante, c["local"]))
@@ -107,15 +159,22 @@ def emparejar(local: str, visitante: str, inicio, candidatos: list[dict]) -> tup
 
 
 def candidatos(deporte: str, inicio, cache: dict) -> list[dict]:
-    """Partidos de ESPN del día del evento y del anterior (ESPN agrupa por hora del este de EE. UU.)."""
+    """Partidos del día del evento y del anterior (ESPN agrupa por hora del este de EE. UU.)."""
     lista = []
-    for fecha in {inicio.date(), (inicio - timedelta(days=1)).date()}:
-        if (deporte, fecha) not in cache:
+    fechas = [inicio.date()] if deporte == "basketball_euroleague" else {inicio.date(), (inicio - timedelta(days=1)).date()}
+    for fecha in fechas:
+        clave = ("euroliga",) if deporte == "basketball_euroleague" else (deporte, fecha)  # la Euroliga trae toda la temporada
+        if clave not in cache:
             try:
-                cache[(deporte, fecha)] = _partidos(_pedir(deporte, fecha))
-            except (urllib.error.URLError, OSError, ValueError):
-                cache[(deporte, fecha)] = []
-        lista += cache[(deporte, fecha)]
+                if deporte == "basketball_euroleague":
+                    cache[clave] = _euroliga(fecha)
+                elif deporte == "mma_mixed_martial_arts":
+                    cache[clave] = _peleas(fecha)
+                else:
+                    cache[clave] = _partidos(_pedir(deporte, fecha))
+            except (urllib.error.URLError, OSError, ValueError, KeyError, TypeError):
+                cache[clave] = []
+        lista += cache[clave]
     return lista
 
 
@@ -132,7 +191,8 @@ def actualizar(con) -> tuple[int, int]:
             continue
         inicio = a_fecha(ev["inicio"])
         partido, invertido = emparejar(ev["local"], ev["visitante"], inicio,
-                                       candidatos(ev["deporte"], inicio, cache))
+                                       candidatos(ev["deporte"], inicio, cache),
+                                       30 if ev["deporte"] in VENTANA_AMPLIA else 3)
         if not partido or partido["fase"] == "pre":
             continue
         if partido["fase"] == "post" and not partido["terminado"]:  # suspendido o pospuesto
