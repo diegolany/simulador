@@ -1,0 +1,6 @@
+simulador.db
+simulador.db-*
+__pycache__/
+publicar/
+.claude/
+clave_api.txt

@@ -1,0 +1,69 @@
+# Corre el bot cada 15 minutos en GitHub y publica el tablero en GitHub Pages.
+# La base de datos vive en la rama "datos" (se reemplaza en cada ciclo para no inflar el repositorio).
+name: Simulador de apuestas
+
+on:
+  schedule:
+    - cron: "*/15 * * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: simulador
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+jobs:
+  ciclo:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment:
+      name: github-pages
+      url: ${{ steps.pagina.outputs.page_url }}
+    env:
+      TZ: America/Mexico_City
+      ODDS_API_KEY: ${{ secrets.ODDS_API_KEY }}
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Recuperar la base de datos
+        run: |
+          set +e
+          git ls-remote --exit-code --heads origin datos > /dev/null
+          codigo=$?
+          set -e
+          if [ $codigo -eq 0 ]; then
+            git fetch -q origin datos:refs/remotes/origin/datos
+            git checkout origin/datos -- simulador.db
+          elif [ $codigo -eq 2 ]; then
+            # Primera vez: arranca desde la simulación que venía corriendo en la PC
+            if [ -f semilla.db ]; then cp semilla.db simulador.db; fi
+          else
+            echo "No se pudo consultar la rama de datos; se cancela para no perder la simulación"
+            exit 1
+          fi
+
+      - name: Ciclo del motor
+        run: python3 motor.py --ciclo --exportar publicar
+
+      - name: Guardar la base de datos
+        run: |
+          python3 -c "import sqlite3; assert sqlite3.connect('simulador.db').execute('PRAGMA integrity_check').fetchone()[0] == 'ok'"
+          mkdir -p /tmp/datos && cp simulador.db /tmp/datos/
+          cd /tmp/datos
+          git init -q -b datos
+          git config user.name "simulador-bot"
+          git config user.email "simulador-bot@users.noreply.github.com"
+          git add simulador.db
+          git commit -qm "Datos $(date -u +%Y-%m-%dT%H:%MZ)"
+          git push -qf "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git" datos
+
+      - uses: actions/upload-pages-artifact@v4
+        with:
+          path: publicar
+
+      - id: pagina
+        uses: actions/deploy-pages@v4
