@@ -266,15 +266,28 @@ def ciclo(con, config: dict, forzar_barrido: bool = False) -> None:
     con.commit()
 
 
-def apuestas_gratuitas(con, config: dict) -> None:
+def apuestas_gratuitas(con, config: dict, manual: bool = False) -> None:
     """Momios gratuitos de DraftKings (ESPN) para la Principal y el laboratorio, cada `minutos_gratis` minutos."""
     ultima = leer_estado(con, "gratis_ultimo")
-    if ultima and ahora() - a_fecha(ultima) < timedelta(minutes=config["minutos_gratis"]):
+    if not manual and ultima and ahora() - a_fecha(ultima) < timedelta(minutes=config["minutos_gratis"]):
         return
-    colocadas = estrategias.apostar_gratis(con, config)
+    colocadas, resumen = estrategias.apostar_gratis(con, config)
     guardar_estado(con, "gratis_ultimo", iso(ahora()))
+    guardar_estado(con, "gratis_resumen", {**resumen, "fecha": iso(ahora()), "apuestas": sum(colocadas.values())})
     if colocadas:
         log("Apuestas con momios gratuitos: " + ", ".join(f"{n} {e}" for e, n in colocadas.items()))
+    if manual:  # búsqueda pedida a mano: explicar qué vio aunque no haya apostado
+        m = resumen["mejor"]
+        if not resumen["comparados"]:
+            texto = (f"no había partidos con precio justo de Pinnacle de menos de {config['max_horas_referencia']} h "
+                     f"y momio de DraftKings para comparar; hace falta una búsqueda con créditos.")
+        else:
+            texto = (f"comparé {resumen['comparados']} partidos de DraftKings contra el precio justo de Pinnacle. "
+                     + (f"El mejor fue {m['partido']} ({m['seleccion']}): DraftKings paga {m['momio']:.2f} y el precio "
+                        f"justo es {m['justo']:.2f}, valor {m['valor']:+.1%} (se necesita +2%). " if m else "")
+                     + (f"Apuestas nuevas: " + ", ".join(f"{n} {e}" for e, n in colocadas.items()) + "."
+                        if colocadas else "Ninguno cumplió las reglas, así que no aposté."))
+        anotar(con, "sistema", "Búsqueda gratis: " + texto)
 
 
 def analizar_sin_gastar(con, config: dict) -> None:
@@ -284,8 +297,7 @@ def analizar_sin_gastar(con, config: dict) -> None:
     estrategias.calcular_clv(con, config)
     capturas, nuevas = estrategias.reanalizar(con, config, config["minutos_reanalisis"])
     log(f"Análisis sin gastar: {capturas} descargas revisadas, {nuevas} apuestas nuevas")
-    guardar_estado(con, "gratis_ultimo", None)  # forzar la revisión de la cartera Gratuita
-    apuestas_gratuitas(con, config)
+    apuestas_gratuitas(con, config, manual=True)
     marcadores.resolver_pronosticos(con)
     diario.actualizar(con, config)
     guardar_estado(con, "ultimo_ciclo", iso(ahora()))

@@ -65,6 +65,12 @@ def escribir(con, config: dict, dia: date | None = None) -> None:
                             AND capturado >= ? AND capturado < ?""", (desde, hasta)).fetchone()[0]
     trabajo.append(f"Sin gastar: revisé marcadores en ESPN y en la Euroliga, y usé los momios de DraftKings de "
                    f"{gratis} partidos para apostar sin gastar créditos y como casa extra.")
+    revision = leer_estado(con, "gratis_resumen")
+    if revision and desde <= revision["fecha"] < hasta and revision.get("mejor"):
+        m = revision["mejor"]
+        trabajo.append(f"En mi última revisión gratuita comparé {revision['comparados']} partidos: el mejor precio de "
+                       f"DraftKings fue {m['partido']} ({m['seleccion']}) a {m['momio']:.2f} contra un precio justo de "
+                       f"{m['justo']:.2f} ({m['valor']:+.1%}). Solo apuesto desde +2%.")
     secciones.append({"titulo": "Cómo trabajé", "parrafos": trabajo})
 
     hechas = con.execute("""SELECT a.casa, e.local, e.visitante, a.seleccion, a.momio, a.razon

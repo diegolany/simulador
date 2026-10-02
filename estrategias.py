@@ -205,8 +205,9 @@ def apostar_gratis(con, config: dict) -> dict:
     y las retadoras) aplica sus mismas reglas y apuesta con su misma banca; la apuesta queda marcada como
     DraftKings. Devuelve {estrategia: apuestas nuevas}."""
     estrategias = [e for e in activas(con) if e["tipo"] == "valor"]
+    resumen = {"comparados": 0, "mejor": None}  # lo que vio, para explicarlo aunque no apueste
     if not estrategias:
-        return {}
+        return {}, resumen
     momento = ahora()
     referencia = config["casa_referencia"]
     filas = con.execute(
@@ -236,6 +237,12 @@ def apostar_gratis(con, config: dict) -> dict:
         justas = dict(zip(selecciones, probabilidades_justas([ref[s] for s in selecciones])))
         horas = (inicio - momento).total_seconds() / 3600
         edad = (momento - a_fecha(ev["cap"])).total_seconds() / 3600
+        resumen["comparados"] += 1
+        for s in selecciones:
+            v = valor_esperado(justas[s], precios[s])
+            if 1.30 <= precios[s] <= 5 and (resumen["mejor"] is None or v > resumen["mejor"]["valor"]):
+                resumen["mejor"] = {"valor": v, "partido": f"{ev['local']} vs {ev['visitante']}",
+                                    "seleccion": _nombre(s), "momio": round(precios[s], 2), "justo": round(1 / justas[s], 2)}
         registrado = False
         for est in pendientes:
             p = est["p"]
@@ -269,7 +276,7 @@ def apostar_gratis(con, config: dict) -> dict:
             ya_apostadas.add((est["nombre"], ev["id"]))
             colocadas[est["nombre"]] = colocadas.get(est["nombre"], 0) + 1
     con.commit()
-    return colocadas
+    return colocadas, resumen
 
 
 def reanalizar(con, config: dict, max_minutos: int, silencioso: bool = False) -> tuple[int, int]:
