@@ -3,9 +3,8 @@ import json
 import math
 from calendar import monthrange
 from datetime import date, timedelta
-from pathlib import Path
 
-from aprendizaje import estadistica
+from aprendizaje import estadistica, evidencia
 from api import creditos_hoy
 from base_datos import a_fecha, ahora, iso, leer_estado
 from momios import decimal_a_americano, probabilidades_justas
@@ -114,14 +113,22 @@ def _creditos(con, config: dict, inicio, restantes) -> dict:
     }
 
 
-def _evidencia() -> dict | None:
-    """Resultados de la prueba con temporadas pasadas (backtest_futbol.py), si ya se corrió."""
-    archivo = Path(__file__).with_name("backtest_futbol.json")
-    if not archivo.exists():
+def _decisiones(con) -> list[dict]:
+    """Últimas veces que el bot decidió gastar créditos, y qué encontró."""
+    nombres = {r[0]: r[1] for r in con.execute("SELECT deporte, MAX(liga) FROM eventos GROUP BY deporte")}
+    return [{"fecha": r["fecha"], "motivo": r["motivo"], "liga": nombres.get(r["deporte"], r["deporte"]),
+             "costo": r["costo"], "senales": r["senales"]}
+            for r in con.execute("SELECT fecha, motivo, deporte, costo, senales FROM consumo_api ORDER BY id DESC LIMIT 8")]
+
+
+def _evidencia(con) -> dict | None:
+    """Resultados de la prueba con temporadas pasadas (la más reciente del estudio automático)."""
+    datos = evidencia(con)
+    if not datos:
         return None
-    datos = json.loads(archivo.read_text(encoding="utf-8"))
     partidos = sum(c["partidos"] for c in datos["calidad"].values())
-    return {"umbral": datos["umbral"], "partidos": partidos, "estrategias": datos["total"]}
+    return {"umbral": datos["umbral"], "partidos": partidos, "estrategias": datos["total"],
+            "fecha": leer_estado(con, "estudio_fecha")}
 
 
 def estado(con, config: dict) -> dict:
@@ -267,13 +274,15 @@ def estado(con, config: dict) -> dict:
         "calibracion": calibracion,
         "bitacora": bitacora,
         "creditos": _creditos(con, config, inicio, restantes),
-        "evidencia": _evidencia(),
+        "evidencia": _evidencia(con),
         "sistema": {
             "motor_activo": motor_activo,
             "ultimo_ciclo": ultimo_ciclo,
             "creditos_restantes": restantes,
             "creditos_hoy": creditos_hoy(con, restantes, config["reserva_creditos"]) if restantes is not None else None,
-            "horas_barrido": config["horas_barrido"],
+            "ahorro": leer_estado(con, "ahorro"),
+            "capacidad_ahorro": config["decision"]["capacidad_ahorro"],
+            "decisiones": _decisiones(con),
             "proxima_revision": iso(a_fecha(ultima_revision) + timedelta(
                 days=config["aprendizaje"]["dias_entre_revisiones"])) if ultima_revision else None,
         },

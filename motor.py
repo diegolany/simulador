@@ -15,12 +15,14 @@ import threading
 import traceback
 import urllib.error
 import webbrowser
-from datetime import date, datetime, time as hora, timedelta
+from calendar import monthrange
+from datetime import date, datetime, timedelta
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 import aprendizaje
 import estrategias
+import estudio
 import marcadores
 import tablero
 from api import (CARPETA, ErrorAPI, cargar_config, creditos_hoy, deportes_activos, descargar_momios,
@@ -91,14 +93,78 @@ def ligas_para_cierre(con, config: dict) -> list[str]:
     return elegidos
 
 
-def barrido_pendiente(con, config: dict) -> tuple[bool, int]:
-    """(¿ya pasó un horario de barrido sin hacerse?, cuántos horarios quedan hoy)."""
-    momento = datetime.now().astimezone()
-    ultimo = leer_estado(con, "ultimo_barrido")
-    ultimo = a_fecha(ultimo) if ultimo else None
-    horarios = [datetime.combine(date.today(), hora(h)).astimezone() for h in sorted(config["horas_barrido"])]
-    pendiente = any(h <= momento and (ultimo is None or ultimo < h) for h in horarios)
-    return pendiente, sum(1 for h in horarios if h > momento)
+def calendario(con, config: dict, activos: dict) -> dict:
+    """{liga: [inicios]} de los partidos de las próximas horas. Se refresca gratis cada pocas horas."""
+    actualizado = leer_estado(con, "calendario_actualizado")
+    if actualizado and ahora() - a_fecha(actualizado) < timedelta(hours=config["decision"]["horas_calendario"]):
+        return leer_estado(con, "calendario", {})
+    limite = ahora() + timedelta(hours=config["horas_ventana"])
+    cal = {}
+    for deporte in config["deportes_candidatos"]:
+        if deporte in activos:
+            inicios = sorted(t for t in proximos_inicios(config["api_key"], deporte) if ahora() < t <= limite)
+            if inicios:
+                cal[deporte] = [iso(t) for t in inicios]
+    guardar_estado(con, "calendario", cal)
+    guardar_estado(con, "calendario_actualizado", iso(ahora()))
+    return cal
+
+
+def _ultima_descarga(con, deporte: str):
+    ultima = con.execute("SELECT MAX(fecha) FROM consumo_api WHERE endpoint = 'odds' AND deporte = ?",
+                         (deporte,)).fetchone()[0]
+    return a_fecha(ultima) if ultima else None
+
+
+def puntajes_descarga(con, config: dict, cal: dict) -> dict:
+    """Qué tanto conviene gastar un crédito en cada liga ahora mismo:
+    urgencia (partidos que empiezan pronto) x antigüedad de sus momios x valor histórico de la liga."""
+    momento = ahora()
+    valores = aprendizaje.valor_ligas(con, config, list(cal))
+    puntajes = {}
+    for deporte, inicios in cal.items():
+        urgencia = 0.0
+        for texto in inicios:
+            horas = (a_fecha(texto) - momento).total_seconds() / 3600
+            if horas > 0.17:
+                urgencia += 1.0 if horas <= 3 else 0.6 if horas <= 12 else 0.3 if horas <= 48 else 0.1
+        ultima = _ultima_descarga(con, deporte)
+        horas_desde = (momento - ultima).total_seconds() / 3600 if ultima else 99
+        if urgencia == 0 or horas_desde < config["horas_min_entre_descargas"]:
+            continue
+        puntajes[deporte] = urgencia * min(1.0, horas_desde / 4) * valores[deporte]
+    return puntajes
+
+
+def decidir_descargas(con, config: dict, activos: dict, cal: dict, restantes: int) -> int:
+    """Cada ciclo decide si vale la pena gastar créditos ahora o guardarlos para un mejor momento.
+    Los créditos se acumulan en un ahorro que se llena a ritmo constante (lo que alcanza para el mes)
+    y se gasta cuando aparece una liga con partidos próximos, momios viejos y buen historial."""
+    d = config["decision"]
+    momento = ahora()
+    hoy = date.today()
+    dias_restantes = monthrange(hoy.year, hoy.month)[1] - hoy.day + 1
+    por_hora = max(0.0, (restantes - config["reserva_creditos"]) / dias_restantes * d["porcion_busqueda"] / 24)
+    ahorro = leer_estado(con, "ahorro", d["capacidad_ahorro"] / 2)
+    ultima = leer_estado(con, "ahorro_actualizado")
+    if ultima:
+        ahorro += por_hora * (momento - a_fecha(ultima)).total_seconds() / 3600
+    ahorro = min(d["capacidad_ahorro"], ahorro)
+    costo_liga = len(config["mercados"]) * len(config["region"].split(","))
+    puntajes = puntajes_descarga(con, config, cal)
+    gastado = 0
+    while puntajes and ahorro >= costo_liga and creditos_hoy(con, restantes - gastado, config["reserva_creditos"]) >= costo_liga:
+        deporte, puntaje = max(puntajes.items(), key=lambda x: x[1])
+        if puntaje < d["puntaje_minimo"]:
+            break
+        log(f"Decisión: vale la pena ahora {activos.get(deporte, deporte)} (puntaje {puntaje:.1f}, ahorro {ahorro:.1f})")
+        costo = apostar_con_captura(con, config, deporte, activos.get(deporte, deporte), "barrido")
+        gastado += costo
+        ahorro -= costo
+        del puntajes[deporte]
+    guardar_estado(con, "ahorro", round(ahorro, 3))
+    guardar_estado(con, "ahorro_actualizado", iso(momento))
+    return gastado
 
 
 def apostar_con_captura(con, config: dict, deporte: str, liga: str, motivo: str) -> int:
@@ -111,32 +177,16 @@ def apostar_con_captura(con, config: dict, deporte: str, liga: str, motivo: str)
     return costo
 
 
-def barrido(con, config: dict, activos: dict, disponibles: int, horarios_restantes: int, manual: bool = False) -> int:
-    presupuesto = int(disponibles * config["porcion_barrido"] / (1 + horarios_restantes))
-    if manual:  # búsqueda pedida a mano: hasta la mitad de lo que queda hoy
-        presupuesto = max(presupuesto, disponibles // 2)
-    presupuesto = max(presupuesto, min(disponibles, 1))
-    momento = ahora()
-    ventana = momento + timedelta(hours=config["horas_ventana"])
-    candidatos = []
-    for deporte in config["deportes_candidatos"]:
-        if deporte in activos and any(momento + timedelta(minutes=10) < t <= ventana
-                                      for t in proximos_inicios(config["api_key"], deporte)):
-            candidatos.append(deporte)
-    orden = aprendizaje.prioridad_ligas(con, config, candidatos)
-    log(f"Barrido: {len(candidatos)} ligas con partidos próximos, presupuesto {presupuesto} créditos")
+def barrido_manual(con, config: dict, activos: dict, cal: dict, presupuesto: int) -> int:
+    """Búsqueda pedida a mano: descarga las ligas mejor puntuadas hasta agotar el presupuesto."""
+    puntajes = puntajes_descarga(con, config, cal)
+    log(f"Búsqueda manual: {len(puntajes)} ligas disponibles, presupuesto {presupuesto} créditos")
     gastado = 0
     costo_liga = len(config["mercados"]) * len(config["region"].split(","))
-    for deporte in orden:
+    for deporte in sorted(puntajes, key=puntajes.get, reverse=True):
         if presupuesto - gastado < costo_liga:
             break
-        ultima = con.execute("SELECT MAX(fecha) FROM consumo_api WHERE endpoint = 'odds' AND deporte = ?",
-                             (deporte,)).fetchone()[0]
-        if ultima and momento - a_fecha(ultima) < timedelta(hours=config["horas_min_entre_descargas"]):
-            continue
-        gastado += apostar_con_captura(con, config, deporte, activos[deporte], "barrido")
-    guardar_estado(con, "ultimo_barrido", iso(ahora()))
-    con.commit()
+        gastado += apostar_con_captura(con, config, deporte, activos.get(deporte, deporte), "barrido")
     return gastado
 
 
@@ -167,17 +217,23 @@ def ciclo(con, config: dict, forzar_barrido: bool = False) -> None:
             break
         restantes -= apostar_con_captura(con, config, deporte, activos.get(deporte, deporte), "cierre")
 
-    pendiente, horarios_restantes = barrido_pendiente(con, config)
-    if pendiente or forzar_barrido:
+    cal = calendario(con, config, activos)  # gratis
+    if forzar_barrido:
         disponibles = creditos_hoy(con, restantes, config["reserva_creditos"])
-        if disponibles:
-            restantes -= barrido(con, config, activos, disponibles, horarios_restantes, manual=forzar_barrido)
-        else:
-            log("Barrido omitido: ya se usaron los créditos de hoy")
-            guardar_estado(con, "ultimo_barrido", iso(ahora()))
+        restantes -= barrido_manual(con, config, activos, cal, max(disponibles // 2, min(disponibles, 1)))
+    else:
+        restantes -= decidir_descargas(con, config, activos, cal, restantes)
+    # Gratis: con los momios ya descargados, apuestas que ahora sí entran en la ventana de alguna estrategia
+    estrategias.reanalizar(con, config, config["minutos_reanalisis"], silencioso=True)
 
     if aprendizaje.toca_revision(con, config):
         aprendizaje.revision(con, config)
+    aprendizaje.aprendizaje_diario(con)
+    try:  # en tiempos muertos: ponerse al día con datos históricos nuevos (gratis)
+        if estudio.estudiar(con, config):
+            log("Estudio de datos históricos actualizado")
+    except (urllib.error.URLError, OSError, ValueError, KeyError) as e:
+        log(f"Estudio pospuesto para el siguiente ciclo: {e}")
 
     if leer_estado(con, "ultima_poda") != date.today().isoformat():
         guardar_estado(con, "ultima_poda", date.today().isoformat())

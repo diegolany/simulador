@@ -4,4 +4,5 @@ __pycache__/
 publicar/
 .claude/
 clave_api.txt
+*.txt
 historico/

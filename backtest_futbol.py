@@ -22,7 +22,11 @@ CARPETA = Path(__file__).parent / "historico"
 LIGAS = {"E0": "Premier League", "SP1": "La Liga", "D1": "Bundesliga", "I1": "Serie A", "F1": "Ligue 1",
          "N1": "Eredivisie", "P1": "Primeira Liga", "MEX": "Liga MX", "ARG": "Argentina", "BRA": "Brasil",
          "USA": "MLS"}
-UMBRAL = float(sys.argv[1]) if len(sys.argv) > 1 else 0.02
+CLAVES = {"E0": "soccer_epl", "SP1": "soccer_spain_la_liga", "D1": "soccer_germany_bundesliga",
+          "I1": "soccer_italy_serie_a", "F1": "soccer_france_ligue_one", "N1": "soccer_netherlands_eredivisie",
+          "P1": "soccer_portugal_primeira_liga", "MEX": "soccer_mexico_ligamx",
+          "ARG": "soccer_argentina_primera_division", "BRA": "soccer_brazil_campeonato", "USA": "soccer_usa_mls"}
+UMBRAL = 0.02
 
 
 def _numero(texto):
@@ -124,46 +128,48 @@ def resumen(lista: list[dict]) -> dict:
             "clv": sum(clvs) / len(clvs) if clvs else None, "momio": sum(a["momio"] for a in lista) / n}
 
 
-def main():
+def ejecutar() -> dict:
+    """Corre la prueba en todas las ligas y devuelve los resultados (los usa el estudio automático)."""
     total = {nombre: [] for nombre in ESTRATEGIAS}
-    por_liga, calidad = {}, {}
+    por_liga, por_clave, calidad = {}, {}, {}
     for liga, nombre_liga in LIGAS.items():
         apuestas, perdida = probar(liga)
         por_liga[nombre_liga] = {e: resumen(l) for e, l in apuestas.items()}
+        por_clave[CLAVES[liga]] = resumen(apuestas["Mercado (la actual)"])
         calidad[nombre_liga] = {"partidos": perdida["n"], "modelo": perdida["modelo"] / max(perdida["n"], 1),
                                 "mercado": perdida["mercado"] / max(perdida["n"], 1)}
         for e, l in apuestas.items():
             total[e] += l
         print(f"  {nombre_liga}: {perdida['n']} partidos probados", flush=True)
+    por_anio = {}
+    for e, l in total.items():
+        anios = {}
+        for a in l:
+            anios.setdefault(a["anio"], []).append(a["ganancia"])
+        por_anio[e] = {anio: {"n": len(g), "rendimiento": sum(g) / len(g)} for anio, g in sorted(anios.items())}
+    return {"umbral": UMBRAL, "partidos": sum(c["partidos"] for c in calidad.values()),
+            "total": {e: resumen(l) for e, l in total.items()}, "por_anio": por_anio,
+            "por_liga": por_liga, "por_clave": por_clave, "calidad": calidad}
 
+
+def main():
+    global UMBRAL
+    if len(sys.argv) > 1:
+        UMBRAL = float(sys.argv[1])
+    datos = ejecutar()
     print(f"\n=== TODAS LAS LIGAS (umbral de valor {UMBRAL:.0%}, 1 unidad por apuesta) ===")
     print(f"{'Estrategia':<34}{'Apuestas':>9}{'Acierto':>9}{'Rend.':>8}{'t':>7}{'CLV':>8}{'Momio':>7}")
-    resultados = {}
-    for e, l in total.items():
-        r = resumen(l)
-        resultados[e] = r
+    for e, r in datos["total"].items():
         if r["n"] < 2:
             continue
         clv = f"{r['clv']:+.1%}" if r["clv"] is not None else "—"
         print(f"{e:<34}{r['n']:>9}{r['acierto']:>9.1%}{r['rendimiento']:>+8.1%}{r['t']:>7.1f}{clv:>8}{r['momio']:>7.2f}")
-        por_anio = {}
-        for a in l:
-            por_anio.setdefault(a["anio"], []).append(a["ganancia"])
-        print("    por año: " + "  ".join(f"{anio} {sum(g) / len(g):+.1%} ({len(g)})" for anio, g in sorted(por_anio.items())))
-
-    print("\n=== POR LIGA: rendimiento (apuestas) ===")
-    for liga, datos in por_liga.items():
-        celdas = "  ".join(f"{e.split(' ')[0]} {r['rendimiento']:+.1%}({r['n']})" if r.get("n", 0) >= 2 else f"{e.split(' ')[0]} —"
-                           for e, r in datos.items())
-        print(f"  {liga:<15} {celdas}")
-
+        print("    por año: " + "  ".join(f"{anio} {x['rendimiento']:+.1%} ({x['n']})" for anio, x in datos["por_anio"][e].items()))
     print("\n=== PRECISIÓN: pérdida logarítmica (menor = mejor) ===")
-    for liga, c in calidad.items():
+    for liga, c in datos["calidad"].items():
         print(f"  {liga:<15} modelo {c['modelo']:.4f}   mercado {c['mercado']:.4f}   ({c['partidos']} partidos)")
-
-    (Path(__file__).parent / "backtest_futbol.json").write_text(
-        json.dumps({"umbral": UMBRAL, "total": resultados, "por_liga": por_liga, "calidad": calidad}, ensure_ascii=False, indent=1),
-        encoding="utf-8")
+    (Path(__file__).parent / "backtest_futbol.json").write_text(json.dumps(datos, ensure_ascii=False, indent=1),
+                                                               encoding="utf-8")
 
 
 if __name__ == "__main__":

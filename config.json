@@ -15,10 +15,17 @@
   "clv_objetivo": 0.01,
   "minutos_entre_ciclos": 20,
   "minutos_reanalisis": 90,
-  "horas_barrido": [9, 13, 17, 21],
-  "porcion_barrido": 0.75,
+  "decision": {
+    "horas_calendario": 3,
+    "capacidad_ahorro": 6,
+    "porcion_busqueda": 0.75,
+    "puntaje_minimo": 0.5
+  },
+  "estudio": {
+    "dias_entre_estudios": 7
+  },
   "horas_ventana": 72,
-  "horas_min_entre_descargas": 3,
+  "horas_min_entre_descargas": 1.5,
   "minutos_captura_cierre": 90,
   "horas_espera_resultados": 10,
   "lote_resultados": 5,

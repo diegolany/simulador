@@ -269,6 +269,8 @@ footer { margin-top: 28px; color: var(--tenue); font-size: 12.5px; line-height: 
         <span><i class="muestra rayada" style="border-color:var(--tenue)"></i>Ritmo que alcanza para el mes</span>
       </div>
       <div class="grafica" style="height:200px"><canvas id="creditos" role="img" aria-label="Créditos usados por día"></canvas></div>
+      <div class="etiqueta" style="margin:16px 0 6px;font-weight:600">Decisiones recientes de gasto</div>
+      <div class="tabla" id="decisiones"></div>
     </div>
   </section>
 
@@ -462,7 +464,17 @@ function creditos(d) {
     kpi('📅', 'Usados hoy', c.hoy, `${c.disponibles_hoy ?? '—'} más disponibles hoy`),
     kpi('⏱️', 'Ritmo restante', c.ritmo_restante == null ? '—' : `${c.ritmo_restante.toFixed(1)} <span class="chica">/ día</span>`,
       alcanza ? '<span class="bueno">✓ Alcanza hasta fin de mes</span>' : '<span class="malo">✗ Casi agotados</span>'),
+    kpi('🐷', 'Ahorro para el mejor momento', `${(d.sistema.ahorro ?? 0).toFixed(1)} <span class="chica">de ${d.sistema.capacidad_ahorro}</span>`,
+      'se gasta cuando hay partidos próximos con valor'),
   ].join('');
+  const motivos = { barrido: '🔎 Búsqueda', cierre: '⏱️ Foto de cierre', resultados: '🏁 Resultados' };
+  $('#decisiones').innerHTML = tabla([
+    { t: 'Hora', v: x => `<span class="chica">${fecha(x.fecha)}</span>` },
+    { t: 'Liga', v: x => esc(x.liga) },
+    { t: 'Motivo', v: x => motivos[x.motivo] || esc(x.motivo) },
+    { t: 'Partidos con valor', num: 1, v: x => x.senales ?? '—' },
+    { t: 'Créditos', num: 1, v: x => x.costo },
+  ], d.sistema.decisiones || [], 'Todavía no hay gastos registrados.');
   if (!window.Chart) return;
   const barra = (label, campo, color) => ({ type: 'bar', label, data: c.por_dia.map(p => p[campo]), backgroundColor: color, stack: 'c', borderRadius: 3, maxBarThickness: 16 });
   const conjuntos = [barra('Búsqueda de momios', 'barrido', k.s1), barra('Foto de cierre', 'cierre', k.s2), barra('Resultados', 'resultados', k.s3),
@@ -549,7 +561,8 @@ function evidencia(d) {
   if (!ev) { $('#evidencia').innerHTML = '<div class="vacio">Aún no se corre la prueba histórica.</div>'; return; }
   $('#evidencia-ayuda').innerHTML = `Cada regla se probó con <b>${ev.partidos.toLocaleString('es-MX')} partidos reales</b> de 11 ligas
     (2021–2026), sin ver el futuro y apostando 1 unidad al mejor momio. "Confianza" indica si el resultado es estadísticamente
-    distinto de la suerte (t ≥ 2 = comprobado).`;
+    distinto de la suerte (t ≥ 2 = comprobado). ${ev.fecha ? `El bot la repite solo cuando hay datos nuevos; última vez: ${fecha(ev.fecha)}.`
+    : 'El bot la repetirá solo cuando se publiquen datos nuevos.'}`;
   const confianza = r => r.t >= 2 ? '<span class="chip bueno">✓ Comprobada</span>'
     : r.t >= 1 ? '<span class="chip azul">Indicio</span>' : '<span class="chip malo">✗ Sin ventaja</span>';
   const filas = Object.entries(ev.estrategias).filter(([, r]) => r.n >= 2).map(([nombre, r]) => ({ nombre, ...r }))
@@ -580,7 +593,7 @@ function sistema(d) {
   pill.querySelector('.texto').textContent = s.ultimo_ciclo ? `${enLinea ? 'En línea' : 'Sin actualizar'} · ${hace(s.ultimo_ciclo)}` : 'Sin datos';
   $('#subtitulo').textContent = `Día ${d.dia} de la simulación · banca ficticia, momios reales`;
   $('#sistema').innerHTML = [
-    `Búsqueda de momios a las ${s.horas_barrido.join(', ')} h (hora de México); marcadores en vivo cada 15 min vía ESPN.`,
+    'Cada 15 min el bot decide si conviene gastar créditos (partidos próximos, momios viejos, historial de la liga) o seguir analizando gratis; marcadores en vivo vía ESPN.',
     `Próxima revisión de aprendizaje: ${s.proxima_revision ? fecha(s.proxima_revision) : '—'} · Inicio de la simulación: ${fecha(d.inicio)}`,
     `Última actualización del bot: ${s.ultimo_ciclo ? fecha(s.ultimo_ciclo) : '—'}`,
   ].join('<br>');

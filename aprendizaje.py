@@ -17,7 +17,8 @@ la ganancia tarda cientos de apuestas en dejar de ser suerte, el CLV no.
 import json
 import math
 import random
-from datetime import timedelta
+from datetime import date, timedelta
+from pathlib import Path
 
 from base_datos import a_fecha, ahora, anotar, guardar_estado, iso, leer_estado
 
@@ -58,25 +59,82 @@ def _clv_por(con, campo: str, estrategia: str | None = None) -> dict:
 
 
 def prioridad_ligas(con, config: dict, deportes: list[str]) -> list[str]:
-    """Ordena las ligas: primero las nunca revisadas, después por valor encontrado por
-    crédito (ajustado por su CLV) más un bono de exploración que crece si se revisan poco."""
+    valores = valor_ligas(con, config, deportes)
+    return sorted(deportes, key=lambda d: valores[d], reverse=True)
+
+
+def valor_ligas(con, config: dict, deportes: list[str]) -> dict[str, float]:
+    """Qué tanto vale descargar cada liga: valor encontrado por crédito (ajustado por su CLV)
+    más un bono de exploración que crece si se revisa poco. Las nunca revisadas valen el máximo."""
     descargas = {f[0]: (f[1], f[2] or 0) for f in con.execute(
         "SELECT deporte, COUNT(*), SUM(senales) FROM consumo_api WHERE endpoint = 'odds' GROUP BY deporte")}
     total = sum(n for n, _ in descargas.values())
     clv = _clv_por(con, "deporte")
+    previa = (evidencia(con) or {}).get("por_clave", {})
     tasas = {d: (s + 1) / (n + 2) for d, (n, s) in descargas.items()}
     maxima = max(tasas.values(), default=1)
     puntajes = {}
     for d in deportes:
         n, _ = descargas.get(d, (0, 0))
         if n == 0:
-            puntajes[d] = float("inf")
+            puntajes[d] = 3.0 * _factor_historico(previa.get(d))
             continue
         m, media, _ = estadistica(clv.get(d, []))
         factor = min(2.0, max(0.2, 1 + 20 * media * m / (m + 20)))
+        # Lo aprendido de temporadas pasadas pesa mientras haya pocos datos en vivo de esa liga
+        factor *= 1 + (_factor_historico(previa.get(d)) - 1) * 20 / (m + 20)
         bono = config["aprendizaje"]["exploracion"] * math.sqrt(math.log(total + 1) / (n + 1))
         puntajes[d] = tasas[d] / maxima * factor + bono
-    return sorted(deportes, key=lambda d: puntajes[d], reverse=True)
+    return puntajes
+
+
+def evidencia(con) -> dict | None:
+    """Resultado más reciente de la prueba con temporadas pasadas: el del estudio automático o el del archivo."""
+    datos = leer_estado(con, "evidencia")
+    if datos:
+        return datos
+    archivo = Path(__file__).with_name("backtest_futbol.json")
+    return json.loads(archivo.read_text(encoding="utf-8")) if archivo.exists() else None
+
+
+def _factor_historico(prueba: dict | None) -> float:
+    """De 0.5 a 1.5 según la ventaja que tuvo la estrategia en esa liga en temporadas pasadas."""
+    if not prueba or prueba.get("n", 0) < 50:
+        return 1.0
+    senal = prueba["clv"] if prueba.get("clv") is not None else prueba["rendimiento"] / 2
+    return 1 + max(-0.5, min(0.5, 8 * senal))
+
+
+def aprendizaje_diario(con) -> None:
+    """Una vez al día: qué tipo de apuesta le está ganando al mercado y cuál no, según el CLV."""
+    hoy = date.today().isoformat()
+    if leer_estado(con, "aprendizaje_diario") == hoy:
+        return
+    guardar_estado(con, "aprendizaje_diario", hoy)
+    filas = con.execute(
+        """SELECT a.momio, a.clv, a.casa, a.liga, (julianday(a.inicio) - julianday(a.colocada)) * 24 AS horas
+           FROM apuestas a JOIN estrategias e ON e.nombre = a.estrategia
+           WHERE e.tipo = 'valor' AND a.clv IS NOT NULL""").fetchall()
+    if len(filas) < 15:
+        anotar(con, "aprendizaje", f"Aprendizaje del día: {len(filas)} apuestas con CLV medido. Con 15 o más empiezo "
+                                   f"a comparar qué tipo de apuesta le gana al mercado.")
+        return
+    grupos = {}
+    for f in filas:
+        momio = "momios menores a 1.80" if f["momio"] < 1.8 else "momios de 1.80 a 3.00" if f["momio"] <= 3 else "momios mayores a 3.00"
+        horas = "apuestas a menos de 6 h" if f["horas"] < 6 else "apuestas de 6 a 24 h antes" if f["horas"] <= 24 else "apuestas con más de 24 h"
+        for clave in (momio, horas, f"la casa {f['casa']}", f"la liga {f['liga']}"):
+            grupos.setdefault(clave, []).append(f["clv"])
+    medidos = [(clave, *estadistica(v)) for clave, v in grupos.items() if len(v) >= 8]
+    _, general, _ = estadistica([f["clv"] for f in filas])
+    if not medidos:
+        return
+    mejor = max(medidos, key=lambda x: x[2])
+    peor = min(medidos, key=lambda x: x[2])
+    anotar(con, "aprendizaje", f"Aprendizaje del día ({len(filas)} apuestas con CLV, promedio {general:+.1%}): "
+                               f"le va mejor con {mejor[0]} (CLV {mejor[2]:+.1%} en {mejor[1]}) y peor con "
+                               f"{peor[0]} (CLV {peor[2]:+.1%} en {peor[1]}).")
+    con.commit()
 
 
 def toca_revision(con, config: dict) -> bool:

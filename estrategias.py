@@ -173,7 +173,7 @@ def colocar_apuestas(con, config: dict, capturado: str) -> tuple[dict, int]:
     return colocadas, senales
 
 
-def reanalizar(con, config: dict, max_minutos: int) -> tuple[int, int]:
+def reanalizar(con, config: dict, max_minutos: int, silencioso: bool = False) -> tuple[int, int]:
     """Vuelve a evaluar con las estrategias actuales los momios descargados en los últimos minutos,
     sin gastar créditos. Los más viejos ya no son precios reales y no se usan.
     Devuelve (fotos revisadas, apuestas nuevas)."""
@@ -184,7 +184,9 @@ def reanalizar(con, config: dict, max_minutos: int) -> tuple[int, int]:
     for capturado in capturas:  # de la más reciente a la más vieja: si se repite un partido, gana el precio más nuevo
         colocadas, _ = colocar_apuestas(con, config, capturado)
         nuevas += sum(colocadas.values())
-    if capturas:
+    if silencioso:
+        pass  # en el ciclo automático solo cuentan las apuestas nuevas, que ya quedan registradas
+    elif capturas:
         anotar(con, "sistema", f"Análisis sin gastar créditos: se revisaron {len(capturas)} descargas de momios de los "
                                f"últimos {max_minutos} min con las reglas actuales; {nuevas} apuestas nuevas.")
     else:
