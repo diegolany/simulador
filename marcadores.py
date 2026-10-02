@@ -75,17 +75,18 @@ def _momios_espn(ev: dict) -> dict | None:
     """Momio actual (o de cierre, si ya empezó) que ESPN publica para local, visitante y empate."""
     for o in ev.get("competitions", [{}])[0].get("odds") or []:
         linea = o.get("moneyline") or {}
-        precios = {}
+        precios, apertura = {}, {}
         for lado in ("home", "away", "draw"):
-            valor = ((linea.get(lado) or {}).get("close") or {}).get("odds")
-            try:
-                if valor:
-                    precios[lado] = americano_a_decimal(100.0 if valor == "EVEN" else float(valor))
-            except ValueError:
-                pass
+            for momento, destino in (("close", precios), ("open", apertura)):
+                valor = ((linea.get(lado) or {}).get(momento) or {}).get("odds")
+                try:
+                    if valor:
+                        destino[lado] = americano_a_decimal(100.0 if valor == "EVEN" else float(valor))
+                except ValueError:
+                    pass
         if "home" in precios and "away" in precios:
             casa = ((o.get("provider") or {}).get("name") or "espn").lower().replace(" ", "")
-            return {"casa": casa, **precios}
+            return {"casa": casa, **precios, "apertura": apertura}
     return None
 
 
@@ -221,18 +222,23 @@ def candidatos(deporte: str, inicio, cache: dict) -> list[dict]:
     return lista
 
 
-def precios(deporte: str, local: str, visitante: str, inicio, cache: dict) -> tuple[str, dict] | None:
-    """(casa, {selección: momio}) que ESPN publica para un partido, con los nombres de The Odds API."""
+def precios(deporte: str, local: str, visitante: str, inicio, cache: dict, con_apertura: bool = False):
+    """(casa, {selección: momio}) que ESPN publica para un partido, con los nombres de The Odds API.
+    Con `con_apertura` agrega un tercer elemento: {selección: momio de apertura}."""
     if not cubierto_momios(deporte):
         return None
     partido, invertido = emparejar(local, visitante, inicio, candidatos(deporte, inicio, cache))
     m = partido.get("momios") if partido else None
     if not m:
         return None
-    por_seleccion = {local: m["away" if invertido else "home"], visitante: m["home" if invertido else "away"]}
-    if "draw" in m:
-        por_seleccion["Draw"] = m["draw"]
-    return m["casa"], por_seleccion
+
+    def por_seleccion(fuente: dict) -> dict:
+        lados = {local: "away" if invertido else "home", visitante: "home" if invertido else "away", "Draw": "draw"}
+        return {sel: fuente[lado] for sel, lado in lados.items() if lado in fuente}
+
+    if con_apertura:
+        return m["casa"], por_seleccion(m), por_seleccion(m.get("apertura") or {})
+    return m["casa"], por_seleccion(m)
 
 
 def agregar_casa_espn(con, capturado: str) -> int:

@@ -576,7 +576,7 @@ function historial(d) {
 }
 
 function laboratorio(d) {
-  const roles = { principal: 'Principal', retadora: 'Retadora', control: 'Control', retirada: 'Retirada' };
+  const roles = { principal: 'Principal', retadora: 'Retadora', experimento: '🆓 Experimento DK', control: 'Control', retirada: 'Retirada' };
   const orden = [...d.laboratorio].sort((a, b) => (b.clv ?? -9) - (a.clv ?? -9) || (b.ganancia - a.ganancia));
   const maximo = Math.max(0.02, ...orden.map(e => Math.abs(e.clv || 0)));
   const barra = v => {

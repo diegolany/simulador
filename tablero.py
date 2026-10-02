@@ -244,7 +244,7 @@ def estado(con, config: dict) -> dict:
     # Laboratorio: todas las estrategias compitiendo, cada una con su banca
     laboratorio = []
     for e in con.execute("SELECT * FROM estrategias ORDER BY CASE rol WHEN 'principal' THEN 0 "
-                         "WHEN 'retadora' THEN 1 WHEN 'control' THEN 2 ELSE 3 END, creada"):
+                         "WHEN 'retadora' THEN 1 WHEN 'experimento' THEN 2 WHEN 'control' THEN 3 ELSE 4 END, creada"):
         propias = [a for a in todas if a["estrategia"] == e["nombre"]]
         r = _resumen(propias)
         por_origen = {o: _resumen([a for a in propias if _origen(a) == o]) for o in ("creditos", "draftkings")}

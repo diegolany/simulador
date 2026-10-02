@@ -110,7 +110,7 @@ def escribir(con, config: dict, dia: date | None = None) -> None:
                       else "todavía no se distingue de la suerte")
             aprendo.append(f"{cartera}: mi precio promedio contra el cierre (CLV) es {media:+.2%} en {n} apuestas; {juicio}.")
     ranking = []
-    for (nombre,) in con.execute("SELECT nombre FROM estrategias WHERE rol IN ('principal', 'retadora', 'gratuita')"):
+    for (nombre,) in con.execute("SELECT nombre FROM estrategias WHERE rol IN ('principal', 'retadora', 'experimento')"):
         n, media, _ = _clv(con, nombre)
         if n >= 5:
             ranking.append((media, nombre, n))
