@@ -131,13 +131,17 @@ def _evidencia(con) -> dict | None:
             "fecha": leer_estado(con, "estudio_fecha")}
 
 
+def _origen(a: dict) -> str:
+    return "draftkings" if a["casa"] == "draftkings" else "creditos"
+
+
 def _fila(a: dict) -> dict:
     """Una apuesta tal como se muestra en historiales; `fuente` dice de dónde salió el momio."""
     return {
         "estrategia": a["estrategia"], "colocada": a["colocada"], "liquidada": a["liquidada"],
         "partido": f"{a['local']} vs {a['visitante']}", "liga": a["liga"], "deporte": nombre_deporte(a["deporte"]),
         "seleccion": "Empate" if a["seleccion"] == "Draw" else a["seleccion"], "casa": a["casa"],
-        "fuente": "draftkings" if a["casa"] == "draftkings" else "creditos",
+        "fuente": _origen(a),
         "momio": a["momio"], "monto": a["monto"], "estado": a["estado"], "ganancia": a["ganancia"],
         "marcador": f"{a['marcador_local']}-{a['marcador_visitante']}" if a["marcador_local"] is not None else None,
         "clv": a["clv"], "clv_fuente": a["clv_fuente"], "nota": a["nota"], "razon": a["razon"],
@@ -241,10 +245,12 @@ def estado(con, config: dict) -> dict:
     laboratorio = []
     for e in con.execute("SELECT * FROM estrategias ORDER BY CASE rol WHEN 'principal' THEN 0 "
                          "WHEN 'retadora' THEN 1 WHEN 'control' THEN 2 ELSE 3 END, creada"):
-        r = _resumen([a for a in todas if a["estrategia"] == e["nombre"]])
+        propias = [a for a in todas if a["estrategia"] == e["nombre"]]
+        r = _resumen(propias)
+        por_origen = {o: _resumen([a for a in propias if _origen(a) == o]) for o in ("creditos", "draftkings")}
         laboratorio.append({"nombre": e["nombre"], "rol": e["rol"], "tipo": e["tipo"],
                             "descripcion": e["descripcion"], "parametros": json.loads(e["parametros"]),
-                            "banca": inicial + r["ganancia"], **r})
+                            "banca": inicial + r["ganancia"], "por_origen": por_origen, **r})
 
     # Calibración con todos los partidos pronosticados (se haya apostado o no)
     partidos_calibrados, calibracion = calibracion_pronosticos(con)

@@ -284,6 +284,12 @@ footer { margin-top: 28px; color: var(--tenue); font-size: 12.5px; line-height: 
       <button data-filtro="Principal" class="activo">Principal</button>
       <button data-filtro="todas">Todas las estrategias</button>
     </div>
+    <div class="filtros" id="filtro-origen">
+      <button data-origen="todos" class="activo">Todos los orígenes</button>
+      <button data-origen="creditos">💳 Créditos</button>
+      <button data-origen="draftkings">🆓 DraftKings</button>
+      <span class="chica" id="reparto-origen" style="align-self:center"></span>
+    </div>
     <div class="boletos" id="activas"></div>
     <h3 class="seccion" id="titulo-historial">Historial de la Principal</h3>
     <div class="tarjeta"><div class="tabla" id="historial"></div></div>
@@ -366,7 +372,7 @@ function tabla(columnas, filas, vacio) {
 const kpi = (icono, etiqueta, valor, detalle) =>
   `<div class="kpi"><div class="etiqueta"><span class="icono">${icono}</span> ${etiqueta}</div><div class="valor">${valor}</div><div class="chica">${detalle}</div></div>`;
 
-let datos = null, grafica = null, graficaCreditos = null, filtro = 'Principal';
+let datos = null, grafica = null, graficaCreditos = null, filtro = 'Principal', origenFiltro = 'todos';
 
 function heroe(d) {
   const g = d.banca - d.banca_inicial;
@@ -514,7 +520,13 @@ function creditos(d) {
 }
 
 function boletos(d) {
-  const lista = d.activas.filter(a => filtro === 'todas' || a.estrategia === filtro);
+  const deEstrategia = x => filtro === 'todas' || x.estrategia === filtro;
+  const deOrigen = x => origenFiltro === 'todos' || x.fuente === origenFiltro;
+  const lista = d.activas.filter(a => deEstrategia(a) && deOrigen(a));
+  // Reparto por origen de todas las apuestas (activas y cerradas) de la estrategia elegida
+  const todasEst = [...d.activas, ...d.historial.filter(h => h.estado !== 'anulada')].filter(deEstrategia);
+  const n = todasEst.length, nc = todasEst.filter(x => x.fuente !== 'draftkings').length, ng = n - nc;
+  $('#reparto-origen').textContent = n ? `💳 Créditos ${nc} (${pct(nc / n, 0)}) · 🆓 DraftKings ${ng} (${pct(ng / n, 0)})` : '';
   $('#conteo-activas').textContent = d.activas.filter(a => a.estrategia === 'Principal').length || '';
   $('#activas').innerHTML = lista.length ? lista.map(a => {
     const enVivo = a.fase === 'en_juego';
@@ -555,7 +567,8 @@ function historial(d) {
     { t: 'Ganancia', num: 1, v: h => conSigno(h.ganancia, sdinero(h.ganancia)) },
     { t: 'CLV', num: 1, v: h => conSigno(h.clv, spct(h.clv)) +
         (h.clv_fuente === 'draftkings' ? '<div class="chica" title="Medido con el cierre de DraftKings publicado por ESPN">DK</div>' : '') },
-  ], d.historial.filter(h => h.estado !== 'anulada' && (filtro === 'todas' || h.estrategia === filtro)), 'Todavía no hay apuestas liquidadas.');
+  ], d.historial.filter(h => h.estado !== 'anulada' && (filtro === 'todas' || h.estrategia === filtro)
+      && (origenFiltro === 'todos' || h.fuente === origenFiltro)), 'Todavía no hay apuestas liquidadas.');
   $('#titulo-historial').textContent = filtro === 'todas' ? 'Historial de todas las estrategias' : 'Historial de la Principal';
   const anuladas = d.historial.filter(h => h.estado === 'anulada' && (filtro === 'todas' || h.estrategia === filtro)).length;
   if (anuladas) $('#historial').insertAdjacentHTML('beforeend',
@@ -579,6 +592,10 @@ function laboratorio(d) {
     { t: 'CLV', num: 1, v: e => `${conSigno(e.clv, spct(e.clv))}<div class="chica">${e.clv_n} medidas</div>${barra(e.clv)}` },
     { t: 'Apuestas', num: 1, v: e => `${e.apuestas}${e.abiertas ? `<div class="chica">${e.abiertas} activas</div>` : ''}` },
     { t: 'Rendimiento', num: 1, v: e => conSigno(e.rendimiento, spct(e.rendimiento)) },
+    { t: 'Origen', num: 1, v: e => {
+        const c = e.por_origen?.creditos?.apuestas || 0, g = e.por_origen?.draftkings?.apuestas || 0, t = c + g;
+        return t ? `💳 ${c} <span class="chica">(${pct(c / t, 0)})</span><div>🆓 ${g} <span class="chica">(${pct(g / t, 0)})</span></div>` : '<span class="tenue">—</span>';
+      } },
     { t: 'Banca', num: 1, v: e => `<b>${dinero.format(e.banca)}</b><div class="chica">${conSigno(e.ganancia, sdinero(e.ganancia))}</div>` },
   ], orden, '');
   $('#calibracion').innerHTML = tabla([
@@ -614,15 +631,34 @@ function evidencia(d) {
 const origen = f => f === 'draftkings' ? '<span class="chip bueno" title="Momio gratuito de DraftKings (ESPN)">🆓 DraftKings</span>'
   : '<span class="chip azul" title="Momio de una descarga pagada con créditos">💳 Créditos</span>';
 
-let estrategiaVista = null;
+let estrategiaVista = null, origenDetalle = 'todos';
 function detalleEstrategia(d) {
   const caja = $('#detalle-estrategia');
-  const lista = estrategiaVista && (d.apuestas_por_estrategia || {})[estrategiaVista];
-  if (!lista) { caja.innerHTML = ''; return; }
+  const completa = estrategiaVista && (d.apuestas_por_estrategia || {})[estrategiaVista];
+  if (!completa) { caja.innerHTML = ''; return; }
+  const lista = completa.filter(h => origenDetalle === 'todos' || h.fuente === origenDetalle);
+  const info = (d.laboratorio || []).find(e => e.nombre === estrategiaVista) || {};
+  const po = info.por_origen || {};
+  const total = (po.creditos?.apuestas || 0) + (po.draftkings?.apuestas || 0);
+  const filasOrigen = [['💳 Créditos', po.creditos], ['🆓 DraftKings', po.draftkings]].filter(([, r]) => r)
+    .map(([nombre, r]) => ({ nombre, ...r }));
+  const resumenOrigen = tabla([
+    { t: 'Origen', v: r => r.nombre },
+    { t: 'Apuestas', num: 1, v: r => r.apuestas },
+    { t: '% del total', num: 1, v: r => total ? pct(r.apuestas / total, 0) : '—' },
+    { t: 'Acierto', num: 1, v: r => pct(r.acierto) },
+    { t: 'Rendimiento', num: 1, v: r => conSigno(r.rendimiento, spct(r.rendimiento)) },
+    { t: 'CLV', num: 1, v: r => conSigno(r.clv, spct(r.clv)) },
+  ], filasOrigen, '');
+  const botones = [['todos', 'Todos'], ['creditos', '💳 Créditos'], ['draftkings', '🆓 DraftKings']]
+    .map(([v, t]) => `<button data-origen-detalle="${v}" class="${v === origenDetalle ? 'activo' : ''}">${t}</button>`).join('');
   const res = { abierta: '<span class="chip azul">● Activa</span>', ganada: '<span class="chip bueno">✓ Ganada</span>',
     perdida: '<span class="chip malo">✗ Perdida</span>', anulada: '<span class="chip">↺ Anulada</span>' };
-  caja.innerHTML = `<h3 class="seccion">Historial de ${esc(estrategiaVista)} (${lista.length} apuestas)
+  caja.innerHTML = `<h3 class="seccion">Historial de ${esc(estrategiaVista)} (${completa.length} apuestas)
       <a href="#laboratorio" data-cerrar style="float:right;text-transform:none;letter-spacing:0">Cerrar ✕</a></h3>
+    <div class="tarjeta" style="margin-bottom:12px"><div class="etiqueta" style="font-weight:600;margin-bottom:6px">Por origen del momio</div>
+      <div class="tabla">${resumenOrigen}</div></div>
+    <div class="filtros">${botones}</div>
     <div class="tarjeta"><div class="tabla">${tabla([
       { t: 'Apostada', v: h => `${fecha(h.colocada)}${h.liquidada ? `<div class="chica">cerró ${fecha(h.liquidada)}</div>` : ''}` },
       { t: 'Partido', v: h => `${emoji(h.deporte)} ${esc(h.partido)}<div class="chica">${esc(h.liga)}</div>` },
@@ -635,10 +671,13 @@ function detalleEstrategia(d) {
     ], lista, '')}</div></div>`;
 }
 document.addEventListener('click', e => {
+  const origenBtn = e.target.closest('[data-origen-detalle]');
+  if (origenBtn) { origenDetalle = origenBtn.dataset.origenDetalle; if (datos) detalleEstrategia(datos); return; }
   const ver = e.target.closest('[data-ver]'), cerrar = e.target.closest('[data-cerrar]');
   if (!ver && !cerrar) return;
   e.preventDefault();
   estrategiaVista = ver ? ver.dataset.ver : null;
+  origenDetalle = 'todos';
   if (datos) detalleEstrategia(datos);
   if (ver) $('#detalle-estrategia').scrollIntoView({ behavior: 'smooth' });
 });
@@ -710,6 +749,11 @@ document.querySelectorAll('.pestanas button').forEach(b => b.addEventListener('c
 document.querySelectorAll('#filtros button').forEach(b => b.addEventListener('click', () => {
   filtro = b.dataset.filtro;
   document.querySelectorAll('#filtros button').forEach(x => x.classList.toggle('activo', x === b));
+  datos && (boletos(datos), historial(datos));
+}));
+document.querySelectorAll('#filtro-origen button').forEach(b => b.addEventListener('click', () => {
+  origenFiltro = b.dataset.origen;
+  document.querySelectorAll('#filtro-origen button').forEach(x => x.classList.toggle('activo', x === b));
   datos && (boletos(datos), historial(datos));
 }));
 
