@@ -111,8 +111,10 @@ def apostar_con_captura(con, config: dict, deporte: str, liga: str, motivo: str)
     return costo
 
 
-def barrido(con, config: dict, activos: dict, disponibles: int, horarios_restantes: int) -> int:
+def barrido(con, config: dict, activos: dict, disponibles: int, horarios_restantes: int, manual: bool = False) -> int:
     presupuesto = int(disponibles * config["porcion_barrido"] / (1 + horarios_restantes))
+    if manual:  # búsqueda pedida a mano: hasta la mitad de lo que queda hoy
+        presupuesto = max(presupuesto, disponibles // 2)
     presupuesto = max(presupuesto, min(disponibles, 1))
     momento = ahora()
     ventana = momento + timedelta(hours=config["horas_ventana"])
@@ -165,7 +167,7 @@ def ciclo(con, config: dict, forzar_barrido: bool = False) -> None:
     if pendiente or forzar_barrido:
         disponibles = creditos_hoy(con, restantes, config["reserva_creditos"])
         if disponibles:
-            restantes -= barrido(con, config, activos, disponibles, horarios_restantes)
+            restantes -= barrido(con, config, activos, disponibles, horarios_restantes, manual=forzar_barrido)
         else:
             log("Barrido omitido: ya se usaron los créditos de hoy")
             guardar_estado(con, "ultimo_barrido", iso(ahora()))
