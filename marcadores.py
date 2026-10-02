@@ -13,6 +13,7 @@ from datetime import timedelta, timezone
 from difflib import SequenceMatcher
 
 from base_datos import a_fecha, ahora, iso
+from momios import americano_a_decimal, probabilidades_justas
 
 URL = "https://site.api.espn.com/apis/site/v2/sports/{ruta}/scoreboard?dates={fecha}&limit=300"
 RUTAS = {
@@ -45,6 +46,29 @@ RELLENO = {"fc", "cf", "sc", "ac", "cd", "ca", "club", "de", "del", "the", "afc"
 
 def cubierto(deporte: str) -> bool:
     return deporte in RUTAS or deporte in VENTANA_AMPLIA
+
+
+def cubierto_momios(deporte: str) -> bool:
+    """Ligas donde ESPN publica momios (DraftKings) de apertura y cierre."""
+    return deporte in RUTAS
+
+
+def _momios_espn(ev: dict) -> dict | None:
+    """Momio actual (o de cierre, si ya empezó) que ESPN publica para local, visitante y empate."""
+    for o in ev.get("competitions", [{}])[0].get("odds") or []:
+        linea = o.get("moneyline") or {}
+        precios = {}
+        for lado in ("home", "away", "draw"):
+            valor = ((linea.get(lado) or {}).get("close") or {}).get("odds")
+            try:
+                if valor:
+                    precios[lado] = americano_a_decimal(100.0 if valor == "EVEN" else float(valor))
+            except ValueError:
+                pass
+        if "home" in precios and "away" in precios:
+            casa = ((o.get("provider") or {}).get("name") or "espn").lower().replace(" ", "")
+            return {"casa": casa, **precios}
+    return None
 
 
 def _json(url: str):
@@ -121,6 +145,7 @@ def _partidos(eventos: list) -> list[dict]:
             "fase": estado.get("state"),            # pre, in, post
             "terminado": bool(estado.get("completed")),
             "detalle": estado.get("shortDetail") or estado.get("description"),
+            "momios": _momios_espn(ev),
         })
     return partidos
 
@@ -176,6 +201,55 @@ def candidatos(deporte: str, inicio, cache: dict) -> list[dict]:
                 cache[clave] = []
         lista += cache[clave]
     return lista
+
+
+def precios(deporte: str, local: str, visitante: str, inicio, cache: dict) -> tuple[str, dict] | None:
+    """(casa, {selección: momio}) que ESPN publica para un partido, con los nombres de The Odds API."""
+    if not cubierto_momios(deporte):
+        return None
+    partido, invertido = emparejar(local, visitante, inicio, candidatos(deporte, inicio, cache))
+    m = partido.get("momios") if partido else None
+    if not m:
+        return None
+    por_seleccion = {local: m["away" if invertido else "home"], visitante: m["home" if invertido else "away"]}
+    if "draw" in m:
+        por_seleccion["Draw"] = m["draw"]
+    return m["casa"], por_seleccion
+
+
+def agregar_casa_espn(con, capturado: str) -> int:
+    """Suma a una descarga de momios los de la casa que publica ESPN (DraftKings) con la misma hora:
+    una casa más para comparar contra Pinnacle sin gastar créditos. Devuelve cuántos partidos agregó."""
+    cache, agregados = {}, 0
+    for ev in con.execute("""SELECT DISTINCT e.id, e.deporte, e.local, e.visitante, e.inicio
+                             FROM momios m JOIN eventos e ON e.id = m.evento_id WHERE m.capturado = ?""",
+                          (capturado,)).fetchall():
+        inicio = a_fecha(ev["inicio"])
+        encontrado = precios(ev["deporte"], ev["local"], ev["visitante"], inicio, cache) if inicio > ahora() else None
+        if not encontrado:
+            continue
+        casa, por_seleccion = encontrado
+        if con.execute("SELECT 1 FROM momios WHERE evento_id = ? AND capturado = ? AND casa = ? LIMIT 1",
+                       (ev["id"], capturado, casa)).fetchone():
+            continue  # dos descargas en el mismo segundo: ya se agregó
+        for seleccion, momio in por_seleccion.items():
+            con.execute("""INSERT INTO momios (evento_id, casa, mercado, seleccion, punto, momio, capturado, actualizado_casa)
+                           VALUES (?, ?, 'h2h', ?, NULL, ?, ?, ?)""",
+                        (ev["id"], casa, seleccion, round(momio, 3), capturado, capturado))
+        agregados += 1
+    con.commit()
+    return agregados
+
+
+def probabilidad_cierre(deporte: str, local: str, visitante: str, inicio, seleccion: str, cache: dict) -> float | None:
+    """Probabilidad justa de la selección según el momio de cierre que publica ESPN (sin la comisión)."""
+    encontrado = precios(deporte, local, visitante, inicio, cache)
+    if not encontrado or seleccion not in encontrado[1]:
+        return None
+    por_seleccion = encontrado[1]
+    selecciones = list(por_seleccion)
+    justas = dict(zip(selecciones, probabilidades_justas([por_seleccion[s] for s in selecciones])))
+    return justas[seleccion]
 
 
 def actualizar(con) -> tuple[int, int]:

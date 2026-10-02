@@ -512,7 +512,8 @@ function boletos(d) {
     return `<article class="boleto ${enVivo ? 'en-vivo' : ''}">
       <div class="boleto-cabeza"><span>${emoji(a.deporte)} ${esc(a.liga)}</span>${estado}</div>
       <div class="equipos">${esc(a.local)} <span class="vs">vs</span> ${esc(a.visitante)}</div>
-      <div class="chica" style="padding:2px 14px 0">${fecha(a.inicio)}${enVivo && a.detalle ? ' · ' + esc(a.detalle) : ''}</div>
+      <div class="chica" style="padding:2px 14px 0">Partido: ${fecha(a.inicio)}${enVivo && a.detalle ? ' · ' + esc(a.detalle) : ''}
+        · Apostada: ${fecha(a.colocada)}</div>
       <div class="eleccion">
         <div><div class="chica">Apuesta</div><b>${esc(a.seleccion)}</b><div class="chica">${esc(a.casa)} · ${esc(a.estrategia)}</div>
           <a class="chica" style="color:var(--serie-1)" target="_blank" rel="noopener"
@@ -534,13 +535,14 @@ function boletos(d) {
 function historial(d) {
   const res = { ganada: '<span class="chip bueno">✓ Ganada</span>', perdida: '<span class="chip malo">✗ Perdida</span>', anulada: '<span class="chip">↺ Anulada</span>' };
   $('#historial').innerHTML = tabla([
-    { t: 'Fecha', v: h => `<span class="chica">${fecha(h.liquidada)}</span>` },
+    { t: 'Apostada', v: h => `${fecha(h.colocada)}<div class="chica">cerró ${fecha(h.liquidada)}</div>` },
     { t: 'Partido', v: h => `${emoji(h.deporte)} ${esc(h.partido)}<div class="chica">${esc(h.liga)}</div>` },
     { t: 'Apuesta', v: h => `${esc(h.seleccion)}<div class="chica">${esc(h.casa)} · ${h.momio.toFixed(2)} · ${esc(h.estrategia)}</div>` },
     { t: 'Resultado', v: h => `${res[h.estado]}<div class="chica">${esc(h.marcador || h.nota || '')}</div>` },
     { t: 'Monto', num: 1, v: h => dinero.format(h.monto) },
     { t: 'Ganancia', num: 1, v: h => conSigno(h.ganancia, sdinero(h.ganancia)) },
-    { t: 'CLV', num: 1, v: h => conSigno(h.clv, spct(h.clv)) },
+    { t: 'CLV', num: 1, v: h => conSigno(h.clv, spct(h.clv)) +
+        (h.clv_fuente === 'draftkings' ? '<div class="chica" title="Medido con el cierre de DraftKings publicado por ESPN">DK</div>' : '') },
   ], d.historial.filter(h => h.estado !== 'anulada' && (filtro === 'todas' || h.estrategia === filtro)), 'Todavía no hay apuestas liquidadas.');
   $('#titulo-historial').textContent = filtro === 'todas' ? 'Historial de todas las estrategias' : 'Historial de la Principal';
   const anuladas = d.historial.filter(h => h.estado === 'anulada' && (filtro === 'todas' || h.estrategia === filtro)).length;

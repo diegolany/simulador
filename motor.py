@@ -81,9 +81,10 @@ def ligas_para_cierre(con, config: dict) -> list[str]:
     """Ligas con apuestas abiertas que empiezan pronto y sin foto reciente: esa foto es el 'cierre'."""
     momento = ahora()
     limite = momento + timedelta(minutes=config["minutos_captura_cierre"])
+    # Donde ESPN publica el cierre de DraftKings, el CLV sale gratis: solo se paga la foto en las demás ligas
     deportes = [f[0] for f in con.execute(
         "SELECT DISTINCT deporte FROM apuestas WHERE estado = 'abierta' AND inicio > ? AND inicio <= ?",
-        (iso(momento), iso(limite)))]
+        (iso(momento), iso(limite))) if not marcadores.cubierto_momios(f[0])]
     elegidos = []
     for deporte in deportes:
         ultima = con.execute("SELECT MAX(fecha) FROM consumo_api WHERE endpoint = 'odds' AND deporte = ?",
@@ -169,6 +170,9 @@ def decidir_descargas(con, config: dict, activos: dict, cal: dict, restantes: in
 
 def apostar_con_captura(con, config: dict, deporte: str, liga: str, motivo: str) -> int:
     capturado, id_consumo, costo = descargar_momios(con, config, deporte, liga, motivo)
+    extra = marcadores.agregar_casa_espn(con, capturado)  # gratis: DraftKings a la misma hora
+    if extra:
+        log(f"  + momios de DraftKings (ESPN) para {extra} partidos")
     colocadas, senales = estrategias.colocar_apuestas(con, config, capturado)
     con.execute("UPDATE consumo_api SET senales = ? WHERE id = ?", (senales, id_consumo))
     con.commit()
@@ -200,6 +204,12 @@ def ciclo(con, config: dict, forzar_barrido: bool = False) -> None:
     if not leer_estado(con, "correccion_3_vias"):
         estrategias.anular_mercados_distintos(con, config["casa_referencia"])
         guardar_estado(con, "correccion_3_vias", True)
+    if not leer_estado(con, "clv_espn_retroactivo"):  # una vez: medir con ESPN el CLV que quedó sin medir
+        con.execute("UPDATE apuestas SET clv = NULL WHERE estado = 'anulada'")
+        con.execute("UPDATE apuestas SET clv_fuente = 'pinnacle' WHERE clv IS NOT NULL AND clv_fuente IS NULL")
+        con.execute("""UPDATE apuestas SET cierre_revisado = 0
+                       WHERE clv IS NULL AND cierre_revisado = 1 AND estado != 'anulada'""")
+        guardar_estado(con, "clv_espn_retroactivo", True)
 
     vivos, terminados = marcadores.actualizar(con)  # gratis
     if vivos or terminados:

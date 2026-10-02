@@ -199,7 +199,7 @@ def estado(con, config: dict) -> dict:
         activas.append({
             "estrategia": a["estrategia"], "local": a["local"], "visitante": a["visitante"],
             "partido": f"{a['local']} vs {a['visitante']}", "liga": a["liga"],
-            "deporte": nombre_deporte(a["deporte"]), "inicio": a["inicio"], "fase": fase,
+            "deporte": nombre_deporte(a["deporte"]), "inicio": a["inicio"], "colocada": a["colocada"], "fase": fase,
             "marcador": (f"{a['marcador_local']}-{a['marcador_visitante']}"
                          if a["marcador_local"] is not None else None),
             "detalle": a["detalle"],
@@ -211,7 +211,8 @@ def estado(con, config: dict) -> dict:
     activas.sort(key=lambda x: x["inicio"])
 
     historial = [{
-        "estrategia": a["estrategia"], "liquidada": a["liquidada"], "partido": f"{a['local']} vs {a['visitante']}", "liga": a["liga"],
+        "estrategia": a["estrategia"], "liquidada": a["liquidada"], "colocada": a["colocada"],
+        "clv_fuente": a["clv_fuente"], "partido": f"{a['local']} vs {a['visitante']}", "liga": a["liga"],
         "deporte": nombre_deporte(a["deporte"]),
         "seleccion": "Empate" if a["seleccion"] == "Draw" else a["seleccion"], "casa": a["casa"],
         "momio": a["momio"], "monto": a["monto"], "estado": a["estado"], "ganancia": a["ganancia"],

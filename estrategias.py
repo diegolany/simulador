@@ -9,6 +9,7 @@ import json
 from datetime import timedelta
 from statistics import median
 
+import marcadores
 from base_datos import a_fecha, ahora, anotar, iso
 from momios import fraccion_kelly, probabilidades_justas, valor_esperado
 
@@ -265,8 +266,12 @@ def calcular_clv(con, config: dict) -> int:
     """Para partidos que ya empezaron, compara el momio apostado contra la última foto de Pinnacle
     antes del inicio. Si no hubo foto posterior a la apuesta, el CLV queda vacío."""
     referencia = config["casa_referencia"]
-    filas = con.execute("""SELECT id, evento_id, seleccion, momio, colocada, inicio FROM apuestas
-                           WHERE cierre_revisado = 0 AND inicio <= ?""", (iso(ahora()),)).fetchall()
+    filas = con.execute("""SELECT a.id, a.evento_id, a.seleccion, a.momio, a.colocada, a.inicio, a.deporte,
+                                  e.local, e.visitante
+                           FROM apuestas a JOIN eventos e ON e.id = a.evento_id
+                           WHERE a.cierre_revisado = 0 AND a.estado != 'anulada' AND a.inicio <= ?""",
+                        (iso(ahora()),)).fetchall()
+    cache = {}
     for f in filas:
         cierre = con.execute(
             """SELECT MAX(capturado) FROM momios
@@ -283,7 +288,15 @@ def calcular_clv(con, config: dict) -> int:
                 momio_cierre, prob_cierre = momios[f["seleccion"]], justas[f["seleccion"]]
                 if cierre > f["colocada"]:
                     clv = f["momio"] * prob_cierre - 1
-        con.execute("""UPDATE apuestas SET momio_cierre_ref = ?, prob_cierre = ?, clv = ?, cierre_revisado = 1
-                       WHERE id = ?""", (momio_cierre, prob_cierre, clv, f["id"]))
+        fuente = "pinnacle" if clv is not None else None
+        if clv is None:  # sin foto de Pinnacle posterior a la apuesta: cierre publicado por ESPN (gratis)
+            inicio = a_fecha(f["inicio"])
+            p = marcadores.probabilidad_cierre(f["deporte"], f["local"], f["visitante"], inicio, f["seleccion"], cache)
+            if p is not None:
+                clv, prob_cierre, fuente = f["momio"] * p - 1, p, "draftkings"
+            elif marcadores.cubierto_momios(f["deporte"]) and ahora() < inicio + timedelta(hours=6):
+                continue  # ESPN todavía puede publicarlo: se reintenta en el siguiente ciclo
+        con.execute("""UPDATE apuestas SET momio_cierre_ref = ?, prob_cierre = ?, clv = ?, clv_fuente = ?,
+                       cierre_revisado = 1 WHERE id = ?""", (momio_cierre, prob_cierre, clv, fuente, f["id"]))
     con.commit()
     return len(filas)

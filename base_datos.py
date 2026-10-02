@@ -84,6 +84,7 @@ CREATE TABLE IF NOT EXISTS apuestas (
     momio_cierre_ref REAL,          -- momio de Pinnacle al cierre
     prob_cierre REAL,               -- probabilidad justa al cierre
     clv REAL,                       -- valor contra el cierre; vacío si no hubo foto posterior
+    clv_fuente TEXT,                -- pinnacle (foto de cierre) o draftkings (cierre publicado por ESPN)
     cierre_revisado INTEGER NOT NULL DEFAULT 0,
     UNIQUE (estrategia, evento_id)
 );
@@ -119,8 +120,9 @@ def conectar() -> sqlite3.Connection:
     con.row_factory = sqlite3.Row
     con.execute("PRAGMA journal_mode=WAL")
     con.executescript(ESQUEMA)
-    if "detalle" not in {c[1] for c in con.execute("PRAGMA table_info(eventos)")}:
-        con.execute("ALTER TABLE eventos ADD COLUMN detalle TEXT")  # bases creadas antes de los marcadores ESPN
+    for tabla, columna in (("eventos", "detalle"), ("apuestas", "clv_fuente")):  # bases creadas antes de esas columnas
+        if columna not in {c[1] for c in con.execute(f"PRAGMA table_info({tabla})")}:
+            con.execute(f"ALTER TABLE {tabla} ADD COLUMN {columna} TEXT")
     return con
 
 
