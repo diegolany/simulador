@@ -122,7 +122,7 @@ def estado(con, config: dict) -> dict:
     objetivos = config["objetivos_semana"]
 
     todas = [dict(r) for r in con.execute(
-        """SELECT a.*, e.local, e.visitante, e.marcador_local, e.marcador_visitante
+        """SELECT a.*, e.local, e.visitante, e.marcador_local, e.marcador_visitante, e.detalle
            FROM apuestas a JOIN eventos e ON e.id = a.evento_id ORDER BY a.colocada""")]
     principal = [a for a in todas if a["estrategia"] == "Principal"]
     liquidadas = [a for a in principal if a["estado"] != "abierta"]
@@ -166,7 +166,7 @@ def estado(con, config: dict) -> dict:
         duracion = config["duracion_horas"].get(a["deporte"].split("_")[0], 4)
         if momento < inicio_partido:
             fase = "por_empezar"
-        elif momento < inicio_partido + timedelta(hours=duracion):
+        elif a["detalle"] or momento < inicio_partido + timedelta(hours=duracion):
             fase = "en_juego"
         else:
             fase = "esperando_resultado"
@@ -179,6 +179,9 @@ def estado(con, config: dict) -> dict:
         activas.append({
             "partido": f"{a['local']} vs {a['visitante']}", "liga": a["liga"],
             "deporte": nombre_deporte(a["deporte"]), "inicio": a["inicio"], "fase": fase,
+            "marcador": (f"{a['marcador_local']}-{a['marcador_visitante']}"
+                         if a["marcador_local"] is not None else None),
+            "detalle": a["detalle"],
             "seleccion": "Empate" if a["seleccion"] == "Draw" else a["seleccion"], "casa": a["casa"],
             "momio": a["momio"], "americano": decimal_a_americano(a["momio"]), "monto": a["monto"],
             "potencial": a["monto"] * (a["momio"] - 1), "prob": a["prob_justa"], "valor": a["valor"],

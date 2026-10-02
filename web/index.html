@@ -289,7 +289,9 @@ function semanas(d) {
 
 function activas(d) {
   const fase = a => a.fase === 'por_empezar' ? (cuenta(a.inicio) || 'Empezando')
-    : a.fase === 'en_juego' ? '<span class="bueno">● En juego</span>' : '<span class="tenue">Esperando resultado</span>';
+    : a.fase === 'en_juego' ? `<span class="bueno">● En juego${a.marcador ? ' · ' + esc(a.marcador) : ''}</span>` +
+      (a.detalle ? `<div class="chica">${esc(a.detalle)}</div>` : '')
+    : '<span class="tenue">Esperando resultado</span>';
   $('#activas').innerHTML = tabla([
     { t: 'Partido', v: a => `${esc(a.partido)}<div class="chica">${esc(a.deporte)} · ${esc(a.liga)}</div>` },
     { t: 'Inicio', v: a => `${fase(a)}<div class="chica">${fecha(a.inicio)}</div>` },

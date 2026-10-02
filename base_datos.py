@@ -20,7 +20,8 @@ CREATE TABLE IF NOT EXISTS eventos (
     inicio TEXT NOT NULL,
     marcador_local INTEGER,
     marcador_visitante INTEGER,
-    terminado INTEGER NOT NULL DEFAULT 0
+    terminado INTEGER NOT NULL DEFAULT 0,
+    detalle TEXT                    -- estado en vivo según ESPN, ej. "2nd Half - 67'"
 );
 
 -- Cada descarga agrega una foto nueva; nunca se borra, así se puede medir
@@ -118,6 +119,8 @@ def conectar() -> sqlite3.Connection:
     con.row_factory = sqlite3.Row
     con.execute("PRAGMA journal_mode=WAL")
     con.executescript(ESQUEMA)
+    if "detalle" not in {c[1] for c in con.execute("PRAGMA table_info(eventos)")}:
+        con.execute("ALTER TABLE eventos ADD COLUMN detalle TEXT")  # bases creadas antes de los marcadores ESPN
     return con
 
 

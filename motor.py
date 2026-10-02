@@ -21,6 +21,7 @@ from pathlib import Path
 
 import aprendizaje
 import estrategias
+import marcadores
 import tablero
 from api import (CARPETA, ErrorAPI, cargar_config, creditos_hoy, deportes_activos, descargar_momios,
                  descargar_resultados, proximos_inicios)
@@ -50,14 +51,16 @@ def _duracion(config: dict, deporte: str) -> timedelta:
 
 
 def deportes_por_liquidar(con, config: dict) -> list[str]:
-    """Deportes con partidos que ya debieron terminar. Se agrupan para gastar menos créditos:
-    se piden cuando el más viejo lleva varias horas esperando o cuando ya son varios."""
+    """Deportes con partidos que ya debieron terminar y que ESPN no resolvió (respaldo con créditos).
+    Se agrupan para gastar menos: se piden cuando el más viejo lleva horas esperando o ya son varios."""
     momento = ahora()
     pendientes = {}
     for f in con.execute("""SELECT DISTINCT a.evento_id, a.deporte, a.inicio FROM apuestas a
                             JOIN eventos e ON e.id = a.evento_id
                             WHERE a.estado = 'abierta' AND e.terminado = 0"""):
         fin = a_fecha(f["inicio"]) + _duracion(config, f["deporte"])
+        if marcadores.cubierto(f["deporte"]) and momento - fin < timedelta(hours=6):
+            continue  # se le da tiempo a ESPN antes de gastar créditos
         if fin < momento:
             pendientes.setdefault(f["deporte"], []).append(fin)
     elegidos = []
@@ -139,6 +142,9 @@ def ciclo(con, config: dict, forzar_barrido: bool = False) -> None:
     activos, restantes = deportes_activos(config["api_key"])  # gratis
     guardar_estado(con, "restantes", restantes)
 
+    vivos, terminados = marcadores.actualizar(con)  # gratis
+    if vivos or terminados:
+        log(f"Marcadores ESPN: {vivos} partidos en juego, {terminados} terminados")
     for deporte in deportes_por_liquidar(con, config):
         if creditos_hoy(con, restantes, config["reserva_creditos"]) < 2:
             break

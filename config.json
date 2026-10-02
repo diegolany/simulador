@@ -15,7 +15,7 @@
   "clv_objetivo": 0.01,
   "minutos_entre_ciclos": 20,
   "horas_barrido": [9, 13, 17, 21],
-  "porcion_barrido": 0.6,
+  "porcion_barrido": 0.75,
   "horas_ventana": 72,
   "horas_min_entre_descargas": 3,
   "minutos_captura_cierre": 90,
