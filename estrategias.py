@@ -40,6 +40,9 @@ ESTRATEGIAS_INICIALES = [
     ("Último momento", "valor", "retadora",
      "Solo apuesta en las 6 h previas al partido",
      {"horas_max": 6}),
+    ("Alta certeza", "valor", "retadora",
+     "Favoritos con valor: momios 1.25 a 1.80 (en pruebas históricas acertó 68%)",
+     {"momio_min": 1.25, "momio_max": 1.80}),
     ("Apostador casual", "favorito", "control",
      "Control: 1% fijo al favorito, al momio promedio de las casas, sin buscar valor",
      {"fijo": 0.01, "horas_max": 24}),
@@ -47,14 +50,19 @@ ESTRATEGIAS_INICIALES = [
 
 
 def sembrar(con) -> None:
-    if con.execute("SELECT COUNT(*) FROM estrategias").fetchone()[0]:
-        return
+    """Crea las estrategias iniciales que falten (las retiradas o renombradas no se vuelven a crear)."""
+    nuevas = []
     for nombre, tipo, rol, descripcion, cambios in ESTRATEGIAS_INICIALES:
-        con.execute("INSERT INTO estrategias (nombre, tipo, rol, descripcion, parametros, creada) "
-                    "VALUES (?, ?, ?, ?, ?, ?)",
-                    (nombre, tipo, rol, descripcion, json.dumps({**PARAMETROS_BASE, **cambios}), iso(ahora())))
-    anotar(con, "inicio", f"Se crearon {len(ESTRATEGIAS_INICIALES)} estrategias: la Principal, "
-                          f"{len(ESTRATEGIAS_INICIALES) - 2} retadoras y un grupo de control.")
+        cur = con.execute("INSERT OR IGNORE INTO estrategias (nombre, tipo, rol, descripcion, parametros, creada) "
+                          "VALUES (?, ?, ?, ?, ?, ?)",
+                          (nombre, tipo, rol, descripcion, json.dumps({**PARAMETROS_BASE, **cambios}), iso(ahora())))
+        if cur.rowcount:
+            nuevas.append(nombre)
+    if len(nuevas) == len(ESTRATEGIAS_INICIALES):
+        anotar(con, "inicio", f"Se crearon {len(nuevas)} estrategias: la Principal, {len(nuevas) - 2} retadoras "
+                              f"y un grupo de control.")
+    elif nuevas:
+        anotar(con, "nueva", f"Nueva retadora: {', '.join(nuevas)}. Respaldada por la prueba con temporadas pasadas.")
 
 
 def activas(con) -> list[dict]:

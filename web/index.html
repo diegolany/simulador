@@ -267,7 +267,12 @@ footer { margin-top: 28px; color: var(--tenue); font-size: 12.5px; line-height: 
         <b>CLV</b> (si conseguimos mejores momios que el mercado al cierre), que muestra antes que la ganancia si un método funciona.
         Cada semana: si una retadora le gana claramente a la Principal, la Principal adopta sus reglas; las que pierden se retiran y nacen variantes nuevas.</p>
     </div>
-    <h3 class="seccion">Ranking de estrategias</h3>
+    <h3 class="seccion">Evidencia histórica (fútbol)</h3>
+    <div class="tarjeta">
+      <p class="ayuda" id="evidencia-ayuda"></p>
+      <div class="tabla" id="evidencia"></div>
+    </div>
+    <h3 class="seccion">Ranking de estrategias en vivo</h3>
     <div class="tarjeta"><div class="tabla ranking" id="laboratorio"></div></div>
     <h3 class="seccion">Calibración</h3>
     <div class="tarjeta">
@@ -514,6 +519,26 @@ function laboratorio(d) {
   ], d.calibracion, 'Aparece cuando haya apuestas liquidadas.');
 }
 
+function evidencia(d) {
+  const ev = d.evidencia;
+  if (!ev) { $('#evidencia').innerHTML = '<div class="vacio">Aún no se corre la prueba histórica.</div>'; return; }
+  $('#evidencia-ayuda').innerHTML = `Cada regla se probó con <b>${ev.partidos.toLocaleString('es-MX')} partidos reales</b> de 11 ligas
+    (2021–2026), sin ver el futuro y apostando 1 unidad al mejor momio. "Confianza" indica si el resultado es estadísticamente
+    distinto de la suerte (t ≥ 2 = comprobado).`;
+  const confianza = r => r.t >= 2 ? '<span class="chip bueno">✓ Comprobada</span>'
+    : r.t >= 1 ? '<span class="chip azul">Indicio</span>' : '<span class="chip malo">✗ Sin ventaja</span>';
+  const filas = Object.entries(ev.estrategias).filter(([, r]) => r.n >= 2).map(([nombre, r]) => ({ nombre, ...r }))
+    .sort((a, b) => b.t - a.t);
+  $('#evidencia').innerHTML = tabla([
+    { t: 'Regla', v: r => `<b>${esc(r.nombre)}</b>` },
+    { t: 'Apuestas', num: 1, v: r => r.n.toLocaleString('es-MX') },
+    { t: 'Acierto', num: 1, v: r => pct(r.acierto) },
+    { t: 'Rendimiento', num: 1, v: r => conSigno(r.rendimiento, spct(r.rendimiento)) },
+    { t: 'CLV', num: 1, v: r => conSigno(r.clv, spct(r.clv)) },
+    { t: 'Confianza', num: 1, v: r => `${confianza(r)}<div class="chica">t = ${r.t.toFixed(1)}</div>` },
+  ], filas, '');
+}
+
 function bitacora(d) {
   const iconos = { inicio: '🚀', semana: '📅', ajuste: '🎯', promocion: '🏆', retiro: '⛔', nueva: '🧪', aprendizaje: '🧠', sistema: '⚙️' };
   $('#bitacora').innerHTML = d.bitacora.map(b => `<li><div class="icono">${iconos[b.tipo] || '•'}</div>
@@ -539,7 +564,7 @@ function sistema(d) {
 function pintar() {
   if (!datos) return;
   heroe(datos); kpis(datos); semanas(datos); deportes(datos); creditos(datos); dibujarCurva(datos.curva);
-  boletos(datos); historial(datos); laboratorio(datos); bitacora(datos); sistema(datos);
+  boletos(datos); historial(datos); laboratorio(datos); evidencia(datos); bitacora(datos); sistema(datos);
 }
 
 async function actualizar() {

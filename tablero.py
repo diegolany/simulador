@@ -3,6 +3,7 @@ import json
 import math
 from calendar import monthrange
 from datetime import date, timedelta
+from pathlib import Path
 
 from aprendizaje import estadistica
 from api import creditos_hoy
@@ -111,6 +112,16 @@ def _creditos(con, config: dict, inicio, restantes) -> dict:
         "ritmo_restante": (restantes - reserva) / dias_restantes if restantes is not None else None,
         "por_dia": serie,
     }
+
+
+def _evidencia() -> dict | None:
+    """Resultados de la prueba con temporadas pasadas (backtest_futbol.py), si ya se corrió."""
+    archivo = Path(__file__).with_name("backtest_futbol.json")
+    if not archivo.exists():
+        return None
+    datos = json.loads(archivo.read_text(encoding="utf-8"))
+    partidos = sum(c["partidos"] for c in datos["calidad"].values())
+    return {"umbral": datos["umbral"], "partidos": partidos, "estrategias": datos["total"]}
 
 
 def estado(con, config: dict) -> dict:
@@ -254,6 +265,7 @@ def estado(con, config: dict) -> dict:
         "calibracion": calibracion,
         "bitacora": bitacora,
         "creditos": _creditos(con, config, inicio, restantes),
+        "evidencia": _evidencia(),
         "sistema": {
             "motor_activo": motor_activo,
             "ultimo_ciclo": ultimo_ciclo,
