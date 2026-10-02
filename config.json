@@ -10,7 +10,7 @@
   "reserva_creditos": 25,
   "apuesta_minima": 50,
   "max_minutos_momio": 30,
-  "valor_sospechoso": 0.25,
+  "valor_sospechoso": 0.15,
   "objetivos_semana": [0.005, 0.0125, 0.02, 0.03],
   "clv_objetivo": 0.01,
   "minutos_entre_ciclos": 20,

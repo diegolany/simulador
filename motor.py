@@ -144,6 +144,10 @@ def ciclo(con, config: dict, forzar_barrido: bool = False) -> None:
     activos, restantes = deportes_activos(config["api_key"])  # gratis
     guardar_estado(con, "restantes", restantes)
 
+    if not leer_estado(con, "correccion_3_vias"):
+        estrategias.anular_mercados_distintos(con, config["casa_referencia"])
+        guardar_estado(con, "correccion_3_vias", True)
+
     vivos, terminados = marcadores.actualizar(con)  # gratis
     if vivos or terminados:
         log(f"Marcadores ESPN: {vivos} partidos en juego, {terminados} terminados")

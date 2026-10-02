@@ -113,6 +113,8 @@ def colocar_apuestas(con, config: dict, capturado: str) -> tuple[dict, int]:
         for casa, datos in casas.items():
             if casa in excluidas or not datos["actualizado"]:
                 continue
+            if set(datos["momios"]) != set(selecciones):
+                continue  # otro mercado: ej. hockey europeo a 3 vías (tiempo regular) contra 2 vías de Pinnacle
             if momento - a_fecha(datos["actualizado"]) > max_antiguedad:
                 continue  # momio viejo: probablemente ya no está disponible
             for sel, momio in datos["momios"].items():
@@ -160,6 +162,34 @@ def colocar_apuestas(con, config: dict, capturado: str) -> tuple[dict, int]:
             colocadas[est["nombre"]] = colocadas.get(est["nombre"], 0) + 1
     con.commit()
     return colocadas, senales
+
+
+def anular_mercados_distintos(con, referencia: str) -> int:
+    """Corrección única (2 de octubre): anula las apuestas abiertas que se tomaron comparando un mercado
+    con opciones distintas a las de la referencia, como el hockey europeo a 3 vías contra el de 2 vías."""
+    def opciones(evento_id, casa, capturado):
+        return {r[0] for r in con.execute("""SELECT seleccion FROM momios WHERE evento_id = ? AND casa = ?
+                                             AND capturado = ? AND mercado = 'h2h'""", (evento_id, casa, capturado))}
+    anuladas = 0
+    for a in con.execute("SELECT id, evento_id, casa, colocada FROM apuestas WHERE estado = 'abierta'").fetchall():
+        ref = opciones(a["evento_id"], referencia, a["colocada"])
+        if a["casa"] == "promedio":
+            casas = [r[0] for r in con.execute("SELECT DISTINCT casa FROM momios WHERE evento_id = ? AND capturado = ?",
+                                               (a["evento_id"], a["colocada"]))]
+            distinto = any(opciones(a["evento_id"], c, a["colocada"]) != ref for c in casas)
+        else:
+            distinto = opciones(a["evento_id"], a["casa"], a["colocada"]) != ref
+        if ref and distinto:
+            con.execute("""UPDATE apuestas SET estado = 'anulada', ganancia = 0, liquidada = ?,
+                           nota = 'Anulada: mercado de 3 vías comparado contra 2 vías' WHERE id = ?""",
+                        (iso(ahora()), a["id"]))
+            anuladas += 1
+    if anuladas:
+        anotar(con, "sistema", f"Corrección: se anularon {anuladas} apuestas con valor falso. Comparaban el hockey "
+                               "europeo a 3 vías (solo tiempo regular, con empate) contra el de 2 vías de Pinnacle "
+                               "(con tiempo extra). Ahora solo se comparan mercados con las mismas opciones.")
+    con.commit()
+    return anuladas
 
 
 def _resultado(seleccion: str, local: str, visitante: str, goles_local: int, goles_visitante: int,
