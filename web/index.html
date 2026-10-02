@@ -239,6 +239,9 @@ footer { margin-top: 28px; color: var(--tenue); font-size: 12.5px; line-height: 
       </div>
       <div class="leyenda">
         <span><i class="muestra" style="border-color:var(--serie-1)"></i>Real</span>
+        <span><i class="muestra caja" style="background:color-mix(in srgb, var(--bueno) 30%, transparent)"></i>Ganancia</span>
+        <span><i class="muestra caja" style="background:color-mix(in srgb, var(--malo) 30%, transparent)"></i>Pérdida</span>
+        <span><i class="muestra" style="border-color:var(--eje)"></i>Punto de partida</span>
         <span><i class="muestra rayada" style="border-color:var(--tenue)"></i>Objetivo</span>
         <span><i class="muestra rayada" style="border-color:var(--serie-2)"></i>Esperado</span>
         <span><i class="muestra caja" style="background:color-mix(in srgb, var(--serie-2) 22%, transparent)"></i>Rango normal por suerte</span>
@@ -386,30 +389,36 @@ function kpis(d) {
 
 function colores() {
   const v = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
-  return { s1: v('--serie-1'), s2: v('--serie-2'), s3: v('--serie-3'), tenue: v('--tenue'), reticula: v('--reticula'), sup: v('--superficie') };
+  return { s1: v('--serie-1'), s2: v('--serie-2'), s3: v('--serie-3'), bueno: v('--bueno'), malo: v('--malo'), eje: v('--eje'), tenue: v('--tenue'), reticula: v('--reticula'), sup: v('--superficie') };
 }
 
-function dibujarCurva(c) {
+function dibujarCurva(d) {
   if (!window.Chart) return;
-  const k = colores();
+  const k = colores(), c = d.curva, ini = d.banca_inicial;
+  const maxDia = Math.max(28, ...c.objetivo.map(p => p.x));
+  // Escala centrada en la banca inicial: ganancias y pérdidas se ven con el mismo espacio
+  const desvio = Math.max(ini * 0.01, ...[...c.real, ...c.objetivo, ...c.banda_alta, ...c.banda_baja].map(p => Math.abs(p.y - ini)));
   const conjuntos = [
+    { label: 'Punto de partida', data: [{ x: 0, y: ini }, { x: maxDia, y: ini }], borderColor: k.eje, borderWidth: 1.5, pointRadius: 0 },
     { label: 'banda_alta', data: c.banda_alta, borderWidth: 0, pointRadius: 0, fill: '+1', backgroundColor: `color-mix(in srgb, ${k.s2} 20%, transparent)` },
     { label: 'banda_baja', data: c.banda_baja, borderWidth: 0, pointRadius: 0, fill: false },
     { label: 'Esperado', data: c.esperado, borderColor: k.s2, borderDash: [4, 4], borderWidth: 2, pointRadius: 0 },
     { label: 'Objetivo', data: c.objetivo, borderColor: k.tenue, borderDash: [6, 4], borderWidth: 2, pointRadius: 0 },
     { label: 'Real', data: c.real, borderColor: k.s1, backgroundColor: k.s1, borderWidth: 2.5, pointRadius: 0, pointHoverRadius: 5,
-      pointHoverBorderWidth: 2, pointHoverBorderColor: k.sup },
+      pointHoverBorderWidth: 2, pointHoverBorderColor: k.sup,
+      fill: { target: { value: ini }, above: `color-mix(in srgb, ${k.bueno} 18%, transparent)`, below: `color-mix(in srgb, ${k.malo} 18%, transparent)` } },
   ];
   const opciones = {
     responsive: true, maintainAspectRatio: false, animation: false,
     interaction: { mode: 'index', intersect: false },
     plugins: { legend: { display: false }, tooltip: {
-      filter: i => !i.dataset.label.startsWith('banda'),
+      filter: i => !i.dataset.label.startsWith('banda') && i.dataset.label !== 'Punto de partida',
       callbacks: { title: it => it.length ? `Día ${Math.floor(it[0].parsed.x)}` : '', label: i => ` ${i.dataset.label}: ${dinero.format(i.parsed.y)}` } } },
     scales: {
-      x: { type: 'linear', min: 0, max: Math.max(28, ...c.objetivo.map(p => p.x)), grid: { display: false }, border: { color: k.reticula },
+      x: { type: 'linear', min: 0, max: maxDia, grid: { display: false }, border: { color: k.reticula },
            ticks: { stepSize: 7, color: k.tenue, callback: v => `Día ${v}` } },
-      y: { grid: { color: k.reticula }, border: { display: false }, ticks: { color: k.tenue, callback: v => dinero.format(v) } },
+      y: { suggestedMin: ini - desvio * 1.15, suggestedMax: ini + desvio * 1.15, grid: { color: k.reticula }, border: { display: false },
+           ticks: { color: k.tenue, callback: v => dinero.format(v) } },
     },
   };
   if (grafica) { grafica.data.datasets = conjuntos; grafica.options = opciones; grafica.update(); return; }
@@ -529,7 +538,10 @@ function historial(d) {
     { t: 'Monto', num: 1, v: h => dinero.format(h.monto) },
     { t: 'Ganancia', num: 1, v: h => conSigno(h.ganancia, sdinero(h.ganancia)) },
     { t: 'CLV', num: 1, v: h => conSigno(h.clv, spct(h.clv)) },
-  ], d.historial, 'Todavía no hay apuestas liquidadas.');
+  ], d.historial.filter(h => h.estado !== 'anulada'), 'Todavía no hay apuestas liquidadas.');
+  const anuladas = d.historial.filter(h => h.estado === 'anulada').length;
+  if (anuladas) $('#historial').insertAdjacentHTML('beforeend',
+    `<div class="chica" style="margin-top:10px">↺ ${anuladas} apuestas anuladas ocultas (se devolvió el dinero; ver Bitácora).</div>`);
 }
 
 function laboratorio(d) {
@@ -601,7 +613,7 @@ function sistema(d) {
 
 function pintar() {
   if (!datos) return;
-  heroe(datos); kpis(datos); semanas(datos); deportes(datos); creditos(datos); dibujarCurva(datos.curva);
+  heroe(datos); kpis(datos); semanas(datos); deportes(datos); creditos(datos); dibujarCurva(datos);
   boletos(datos); historial(datos); laboratorio(datos); evidencia(datos); bitacora(datos); sistema(datos);
 }
 
@@ -633,7 +645,7 @@ document.querySelectorAll('#filtros button').forEach(b => b.addEventListener('cl
 
 function aplicarTema(tema) {
   if (tema) document.documentElement.dataset.theme = tema; else delete document.documentElement.dataset.theme;
-  datos && (dibujarCurva(datos.curva), creditos(datos));
+  datos && (dibujarCurva(datos), creditos(datos));
 }
 $('#tema').addEventListener('click', () => {
   const oscuro = getComputedStyle(document.documentElement).colorScheme.includes('dark');
@@ -642,7 +654,7 @@ $('#tema').addEventListener('click', () => {
   aplicarTema(tema);
 });
 try { aplicarTema(localStorage.getItem('tema')); } catch (e) {}
-matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => datos && (dibujarCurva(datos.curva), creditos(datos)));
+matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => datos && (dibujarCurva(datos), creditos(datos)));
 
 if (ESTATICO) $('#buscar').hidden = true;
 // Las acciones corren el bot en GitHub: el enlace lleva a la página del workflow del repositorio
