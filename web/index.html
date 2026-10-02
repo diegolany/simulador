@@ -61,6 +61,15 @@ button { font: inherit; cursor: pointer; }
   70% { box-shadow: 0 0 0 7px transparent; } 100% { box-shadow: 0 0 0 0 transparent; } }
 .boton { padding: 7px 14px; border-radius: 9px; border: 0; background: var(--serie-1); color: #fff; font-weight: 600; }
 .boton:disabled { opacity: .6; cursor: default; }
+.menu { position: relative; }
+.menu summary { list-style: none; cursor: pointer; padding: 7px 14px; border-radius: 9px; background: var(--serie-1); color: #fff; font-weight: 600; white-space: nowrap; }
+.menu summary::-webkit-details-marker { display: none; }
+.menu-panel { position: absolute; right: 0; top: calc(100% + 8px); width: min(320px, 88vw); background: var(--superficie); border: 1px solid var(--borde);
+  border-radius: 14px; box-shadow: 0 14px 36px rgba(0,0,0,0.22); padding: 8px; z-index: 20; }
+.menu-panel a { display: block; padding: 10px 12px; border-radius: 10px; color: var(--tinta); text-decoration: none; }
+.menu-panel a:hover { background: var(--superficie-2); }
+.menu-panel a b { display: block; margin-bottom: 2px; }
+.menu-panel .paso { color: var(--tenue); font-size: 12px; padding: 10px 12px 4px; border-top: 1px solid var(--reticula); margin-top: 4px; }
 .boton-icono { width: 34px; height: 34px; border-radius: 9px; border: 1px solid var(--borde); background: var(--superficie);
   color: var(--tinta-2); font-size: 15px; }
 .pestanas { display: flex; gap: 4px; overflow-x: auto; padding: 10px 16px 0; max-width: 1200px; margin: 0 auto; scrollbar-width: none; }
@@ -191,6 +200,17 @@ footer { margin-top: 28px; color: var(--tenue); font-size: 12.5px; line-height: 
     </div>
     <div class="acciones">
       <span class="pastilla" id="motor"><span class="punto"></span><span class="texto">Conectando…</span></span>
+      <details class="menu" id="acciones">
+        <summary>Acciones ▾</summary>
+        <div class="menu-panel">
+          <a data-accion target="_blank" rel="noopener"><b>🧠 Analizar sin gastar</b>
+            <span class="chica">Revisa con las reglas actuales los momios de los últimos 90 min. 0 créditos.</span></a>
+          <a data-accion target="_blank" rel="noopener"><b>🔎 Buscar apuestas ahora</b>
+            <span class="chica">Descarga momios nuevos. Usa hasta la mitad de los créditos de hoy.</span></a>
+          <div class="paso">Se abre GitHub: presiona <b>Run workflow</b>, elige la opción en "¿Qué hacer?" y dale
+            <b>Run workflow</b>. El tablero se actualiza en 1–2 minutos.</div>
+        </div>
+      </details>
       <button class="boton-icono" id="tema" title="Cambiar tema claro / oscuro" aria-label="Cambiar tema">◐</button>
       <button class="boton" id="buscar" title="Busca momios ahora, respetando los créditos del día">Buscar momios</button>
     </div>
@@ -213,6 +233,7 @@ footer { margin-top: 28px; color: var(--tenue); font-size: 12.5px; line-height: 
           <div class="etiqueta">Banca de la estrategia Principal</div>
           <div class="cifra" id="banca">—</div>
           <span class="delta" id="delta"></span>
+          <div class="chica" id="en-juego" style="margin-top:10px"></div>
         </div>
         <div class="meta" id="meta"></div>
       </div>
@@ -336,6 +357,10 @@ function heroe(d) {
   const delta = $('#delta');
   delta.className = 'delta ' + tono(g);
   delta.textContent = `${flecha(g)}${sdinero(g)} (${spct(g / d.banca_inicial, 2)}) desde el inicio`;
+  const r = d.resumen;
+  $('#en-juego').textContent = r.abiertas
+    ? `🎟️ ${r.abiertas} ${r.abiertas > 1 ? 'apuestas activas' : 'apuesta activa'} · ${dinero.format(r.en_juego)} en juego · la banca se mueve al terminar cada partido`
+    : 'Sin apuestas activas de la Principal';
   const ultima = d.semanas[d.semanas.length - 1];
   const avance = Math.max(0, Math.min(1, g / (ultima.banca_objetivo - d.banca_inicial)));
   const actual = d.semanas.find(s => s.situacion === 'en_curso');
@@ -409,7 +434,7 @@ function deportes(d) {
   $('#deportes').innerHTML = d.deportes.length ? d.deportes.map(r => `
     <div class="tarjeta">
       <div class="deporte-cabeza"><div class="emoji">${emoji(r.deporte)}</div><div><b>${esc(r.deporte)}</b>
-        <div class="chica">${r.apuestas} apuestas${r.abiertas ? ` · ${r.abiertas} activas` : ''}</div></div></div>
+        <div class="chica">${r.apuestas} apuestas${r.abiertas ? ` · ${r.abiertas} activas · ${dinero.format(r.en_juego)} en juego` : ''}</div></div></div>
       <div class="chica">Ganancia</div><div style="font-size:20px;font-weight:700">${conSigno(r.ganancia, sdinero(r.ganancia))}</div>
       <div class="datos">
         <div><span class="chica">Rendimiento</span><b>${conSigno(r.rendimiento, spct(r.rendimiento))}</b></div>
@@ -607,6 +632,12 @@ try { aplicarTema(localStorage.getItem('tema')); } catch (e) {}
 matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => datos && (dibujarCurva(datos.curva), creditos(datos)));
 
 if (ESTATICO) $('#buscar').hidden = true;
+// Las acciones corren el bot en GitHub: el enlace lleva a la página del workflow del repositorio
+const REPO = location.hostname.endsWith('github.io')
+  ? `https://github.com/${location.hostname.split('.')[0]}/${location.pathname.split('/')[1]}` : null;
+if (REPO) document.querySelectorAll('[data-accion]').forEach(a => a.href = `${REPO}/actions/workflows/simulador.yml`);
+else $('#acciones').hidden = true;
+document.addEventListener('click', e => { if (!$('#acciones').contains(e.target)) $('#acciones').open = false; });
 $('#buscar').addEventListener('click', async () => {
   const b = $('#buscar');
   b.disabled = true; b.textContent = 'Buscando…';

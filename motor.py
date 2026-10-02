@@ -188,6 +188,17 @@ def ciclo(con, config: dict, forzar_barrido: bool = False) -> None:
     con.commit()
 
 
+def analizar_sin_gastar(con, config: dict) -> None:
+    """Marcadores, liquidación, CLV y apuestas nuevas con los momios ya descargados: 0 créditos."""
+    marcadores.actualizar(con)
+    estrategias.liquidar(con)
+    estrategias.calcular_clv(con, config)
+    capturas, nuevas = estrategias.reanalizar(con, config, config["minutos_reanalisis"])
+    log(f"Análisis sin gastar: {capturas} descargas revisadas, {nuevas} apuestas nuevas")
+    guardar_estado(con, "ultimo_ciclo", iso(ahora()))
+    con.commit()
+
+
 def exportar(con, config: dict, carpeta: Path) -> None:
     """Tablero estático (página + estado.json) para publicarlo en internet."""
     carpeta.mkdir(parents=True, exist_ok=True)
@@ -251,6 +262,7 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="Simulador de apuestas deportivas")
     parser.add_argument("--un-ciclo", action="store_true", help="corre un ciclo con barrido y termina")
     parser.add_argument("--ciclo", action="store_true", help="corre un ciclo normal y termina (modo nube)")
+    parser.add_argument("--analizar", action="store_true", help="evalúa los momios recientes sin gastar créditos")
     parser.add_argument("--exportar", metavar="CARPETA", help="escribe el tablero estático en esa carpeta")
     parser.add_argument("--sin-motor", action="store_true", help="solo muestra el tablero, sin gastar créditos")
     parser.add_argument("--sin-navegador", action="store_true", help="no abre el navegador")
@@ -262,9 +274,12 @@ def main() -> int:
         return 1
     con = conectar()
     inicializar(con, config)
-    if args.un_ciclo or args.ciclo:
+    if args.un_ciclo or args.ciclo or args.analizar:
         try:
-            ciclo(con, config, forzar_barrido=args.un_ciclo)
+            if args.analizar:
+                analizar_sin_gastar(con, config)
+            else:
+                ciclo(con, config, forzar_barrido=args.un_ciclo)
         except (ErrorAPI, urllib.error.URLError) as e:
             log(f"Ciclo incompleto: {e}")
         if args.exportar:

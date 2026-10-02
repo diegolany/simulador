@@ -9,10 +9,14 @@ on:
     branches: [main]              # cada actualización del código corre un ciclo de inmediato
   workflow_dispatch:
     inputs:
-      buscar_ahora:
-        description: "Buscar momios ahora (usa hasta la mitad de los créditos de hoy)"
-        type: boolean
-        default: false
+      modo:
+        description: "¿Qué hacer?"
+        type: choice
+        options:
+          - "Analizar sin gastar créditos"
+          - "Buscar apuestas ahora (gasta créditos)"
+          - "Ciclo normal"
+        default: "Analizar sin gastar créditos"
 
 concurrency:
   group: simulador
@@ -54,7 +58,13 @@ jobs:
           fi
 
       - name: Ciclo del motor
-        run: python3 motor.py ${{ inputs.buscar_ahora && '--un-ciclo' || '--ciclo' }} --exportar publicar
+        run: |
+          case "${{ inputs.modo }}" in
+            Analizar*) modo=--analizar ;;
+            Buscar*) modo=--un-ciclo ;;
+            *) modo=--ciclo ;;
+          esac
+          python3 motor.py $modo --exportar publicar
 
       - name: Guardar la base de datos
         run: |

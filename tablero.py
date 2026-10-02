@@ -26,7 +26,7 @@ def _resumen(apuestas: list[dict]) -> dict:
     ganancia = sum(a["ganancia"] or 0 for a in apuestas if a["estado"] != "abierta")
     n_clv, clv, _ = estadistica([a["clv"] for a in apuestas if a["clv"] is not None])
     return {
-        "apuestas": len(apuestas),
+        "apuestas": sum(1 for a in apuestas if a["estado"] != "anulada"),
         "abiertas": sum(1 for a in apuestas if a["estado"] == "abierta"),
         "liquidadas": len(decididas),
         "ganadas": ganadas,
@@ -161,6 +161,8 @@ def estado(con, config: dict) -> dict:
     # Por deporte y por liga
     por_deporte, por_liga = {}, {}
     for a in principal:
+        if a["estado"] == "anulada":
+            continue  # devueltas: no cuentan como apuestas del deporte
         por_deporte.setdefault(nombre_deporte(a["deporte"]), []).append(a)
         por_liga.setdefault((nombre_deporte(a["deporte"]), a["liga"]), []).append(a)
     deportes = sorted(({"deporte": d, **_resumen(lista)} for d, lista in por_deporte.items()),

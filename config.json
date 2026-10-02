@@ -14,6 +14,7 @@
   "objetivos_semana": [0.005, 0.0125, 0.02, 0.03],
   "clv_objetivo": 0.01,
   "minutos_entre_ciclos": 20,
+  "minutos_reanalisis": 90,
   "horas_barrido": [9, 13, 17, 21],
   "porcion_barrido": 0.75,
   "horas_ventana": 72,

@@ -113,7 +113,8 @@ def colocar_apuestas(con, config: dict, capturado: str) -> tuple[dict, int]:
         ev = eventos[evento_id]
         horas = (a_fecha(ev["inicio"]) - momento).total_seconds() / 3600
         ref = casas.get(referencia)
-        if horas <= 0 or not ref or len(ref["momios"]) < 2:
+        empieza_ya = a_fecha(ev["inicio"]) - ahora() < timedelta(minutes=10)
+        if horas <= 0 or empieza_ya or not ref or len(ref["momios"]) < 2:
             continue
         selecciones = list(ref["momios"])
         justas = dict(zip(selecciones, probabilidades_justas([ref["momios"][s] for s in selecciones])))
@@ -170,6 +171,27 @@ def colocar_apuestas(con, config: dict, capturado: str) -> tuple[dict, int]:
             colocadas[est["nombre"]] = colocadas.get(est["nombre"], 0) + 1
     con.commit()
     return colocadas, senales
+
+
+def reanalizar(con, config: dict, max_minutos: int) -> tuple[int, int]:
+    """Vuelve a evaluar con las estrategias actuales los momios descargados en los últimos minutos,
+    sin gastar créditos. Los más viejos ya no son precios reales y no se usan.
+    Devuelve (fotos revisadas, apuestas nuevas)."""
+    desde = iso(ahora() - timedelta(minutes=max_minutos))
+    capturas = [r[0] for r in con.execute(
+        "SELECT DISTINCT capturado FROM momios WHERE capturado >= ? ORDER BY capturado DESC", (desde,))]
+    nuevas = 0
+    for capturado in capturas:  # de la más reciente a la más vieja: si se repite un partido, gana el precio más nuevo
+        colocadas, _ = colocar_apuestas(con, config, capturado)
+        nuevas += sum(colocadas.values())
+    if capturas:
+        anotar(con, "sistema", f"Análisis sin gastar créditos: se revisaron {len(capturas)} descargas de momios de los "
+                               f"últimos {max_minutos} min con las reglas actuales; {nuevas} apuestas nuevas.")
+    else:
+        anotar(con, "sistema", f"Análisis sin gastar créditos: no hay momios de los últimos {max_minutos} min "
+                               f"(los más viejos ya no son precios reales); hace falta una búsqueda nueva.")
+    con.commit()
+    return len(capturas), nuevas
 
 
 def anular_mercados_distintos(con, referencia: str) -> int:
