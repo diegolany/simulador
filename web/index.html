@@ -317,6 +317,7 @@ footer { margin-top: 28px; color: var(--tenue); font-size: 12.5px; line-height: 
 <script>
 const $ = s => document.querySelector(s);
 const ESTATICO = !location.port;  // en internet (GitHub Pages) se lee estado.json, sin servidor
+const VERSION = '__VERSION__';    // la pone el bot al publicar; si los datos traen otra, la página está vieja
 const dinero = new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN', maximumFractionDigits: 0 });
 const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 const pct = (v, d = 1) => v == null ? '—' : (v * 100).toFixed(d) + '%';
@@ -624,6 +625,11 @@ async function actualizar() {
   try {
     const r = await fetch(ESTATICO ? `estado.json?t=${Date.now()}` : '/api/estado', { cache: 'no-store' });
     datos = await r.json();
+    if (ESTATICO && !VERSION.startsWith('__') && datos.version && datos.version !== VERSION) {
+      // GitHub guarda la página en caché unos minutos: se pide la versión nueva con otra dirección
+      location.replace(`${location.pathname}?v=${datos.version}${location.hash}`);
+      return;
+    }
     $('#aviso').style.display = 'none';
     pintar();
   } catch (e) {

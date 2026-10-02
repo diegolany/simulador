@@ -8,8 +8,8 @@ Cada ciclo (cada 10 minutos):
   5. Una vez por semana corre la revisión de aprendizaje.
 """
 import argparse
+import hashlib
 import json
-import shutil
 import sys
 import threading
 import traceback
@@ -258,9 +258,11 @@ def analizar_sin_gastar(con, config: dict) -> None:
 def exportar(con, config: dict, carpeta: Path) -> None:
     """Tablero estático (página + estado.json) para publicarlo en internet."""
     carpeta.mkdir(parents=True, exist_ok=True)
-    (carpeta / "estado.json").write_text(json.dumps(tablero.estado(con, config), ensure_ascii=False),
-                                         encoding="utf-8")
-    shutil.copy(CARPETA / "web" / "index.html", carpeta / "index.html")
+    pagina = (CARPETA / "web" / "index.html").read_text(encoding="utf-8")
+    version = hashlib.sha1(pagina.encode("utf-8")).hexdigest()[:10]  # la página se recarga sola si cambia
+    datos = {**tablero.estado(con, config), "version": version}
+    (carpeta / "estado.json").write_text(json.dumps(datos, ensure_ascii=False), encoding="utf-8")
+    (carpeta / "index.html").write_text(pagina.replace("__VERSION__", version), encoding="utf-8")
 
 
 def bucle_motor() -> None:
