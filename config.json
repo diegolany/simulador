@@ -15,7 +15,7 @@
   "clv_objetivo": 0.01,
   "minutos_entre_ciclos": 20,
   "minutos_reanalisis": 90,
-  "minutos_gratis": 15,
+  "minutos_gratis": 5,
   "max_horas_referencia": 3,
   "decision": {
     "horas_calendario": 3,

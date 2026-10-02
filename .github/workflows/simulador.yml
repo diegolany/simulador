@@ -13,10 +13,10 @@ on:
         description: "¿Qué hacer?"
         type: choice
         options:
-          - "Analizar sin gastar créditos"
-          - "Buscar apuestas ahora (gasta créditos)"
+          - "Buscar apuestas gratis (0 créditos)"
+          - "Buscar apuestas con créditos"
           - "Ciclo normal"
-        default: "Analizar sin gastar créditos"
+        default: "Buscar apuestas gratis (0 créditos)"
 
 concurrency:
   group: simulador
@@ -60,8 +60,8 @@ jobs:
       - name: Ciclo del motor
         run: |
           case "${{ inputs.modo }}" in
-            Analizar*) modo=--analizar ;;
-            Buscar*) modo=--un-ciclo ;;
+            *gratis*|Analizar*) modo=--analizar ;;   # el orden importa: primero la opción gratuita
+            *créditos*|Buscar*) modo=--un-ciclo ;;
             *) modo=--ciclo ;;
           esac
           python3 motor.py $modo --exportar publicar
