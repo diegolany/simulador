@@ -283,7 +283,7 @@ footer { margin-top: 28px; color: var(--tenue); font-size: 12.5px; line-height: 
       <button data-filtro="todas">Todas las estrategias</button>
     </div>
     <div class="boletos" id="activas"></div>
-    <h3 class="seccion">Historial de la Principal</h3>
+    <h3 class="seccion" id="titulo-historial">Historial de la Principal</h3>
     <div class="tarjeta"><div class="tabla" id="historial"></div></div>
   </section>
 
@@ -513,7 +513,9 @@ function boletos(d) {
       <div class="equipos">${esc(a.local)} <span class="vs">vs</span> ${esc(a.visitante)}</div>
       <div class="chica" style="padding:2px 14px 0">${fecha(a.inicio)}${enVivo && a.detalle ? ' · ' + esc(a.detalle) : ''}</div>
       <div class="eleccion">
-        <div><div class="chica">Apuesta</div><b>${esc(a.seleccion)}</b><div class="chica">${esc(a.casa)} · ${esc(a.estrategia)}</div></div>
+        <div><div class="chica">Apuesta</div><b>${esc(a.seleccion)}</b><div class="chica">${esc(a.casa)} · ${esc(a.estrategia)}</div>
+          <a class="chica" style="color:var(--serie-1)" target="_blank" rel="noopener"
+             href="https://www.google.com/search?q=${encodeURIComponent('oddsportal ' + a.local + ' ' + a.visitante)}">🔎 Verificar momios</a></div>
         <div class="momio">${a.momio.toFixed(2)}<small>${americano(a.momio)}</small></div>
       </div>
       <div class="boleto-pie">
@@ -533,13 +535,14 @@ function historial(d) {
   $('#historial').innerHTML = tabla([
     { t: 'Fecha', v: h => `<span class="chica">${fecha(h.liquidada)}</span>` },
     { t: 'Partido', v: h => `${emoji(h.deporte)} ${esc(h.partido)}<div class="chica">${esc(h.liga)}</div>` },
-    { t: 'Apuesta', v: h => `${esc(h.seleccion)}<div class="chica">${esc(h.casa)} · ${h.momio.toFixed(2)}</div>` },
+    { t: 'Apuesta', v: h => `${esc(h.seleccion)}<div class="chica">${esc(h.casa)} · ${h.momio.toFixed(2)} · ${esc(h.estrategia)}</div>` },
     { t: 'Resultado', v: h => `${res[h.estado]}<div class="chica">${esc(h.marcador || h.nota || '')}</div>` },
     { t: 'Monto', num: 1, v: h => dinero.format(h.monto) },
     { t: 'Ganancia', num: 1, v: h => conSigno(h.ganancia, sdinero(h.ganancia)) },
     { t: 'CLV', num: 1, v: h => conSigno(h.clv, spct(h.clv)) },
-  ], d.historial.filter(h => h.estado !== 'anulada'), 'Todavía no hay apuestas liquidadas.');
-  const anuladas = d.historial.filter(h => h.estado === 'anulada').length;
+  ], d.historial.filter(h => h.estado !== 'anulada' && (filtro === 'todas' || h.estrategia === filtro)), 'Todavía no hay apuestas liquidadas.');
+  $('#titulo-historial').textContent = filtro === 'todas' ? 'Historial de todas las estrategias' : 'Historial de la Principal';
+  const anuladas = d.historial.filter(h => h.estado === 'anulada' && (filtro === 'todas' || h.estrategia === filtro)).length;
   if (anuladas) $('#historial').insertAdjacentHTML('beforeend',
     `<div class="chica" style="margin-top:10px">↺ ${anuladas} apuestas anuladas ocultas (se devolvió el dinero; ver Bitácora).</div>`);
 }
@@ -640,7 +643,7 @@ document.querySelectorAll('.pestanas button').forEach(b => b.addEventListener('c
 document.querySelectorAll('#filtros button').forEach(b => b.addEventListener('click', () => {
   filtro = b.dataset.filtro;
   document.querySelectorAll('#filtros button').forEach(x => x.classList.toggle('activo', x === b));
-  datos && boletos(datos);
+  datos && (boletos(datos), historial(datos));
 }));
 
 function aplicarTema(tema) {
