@@ -251,8 +251,8 @@ def main() -> int:
     args = parser.parse_args()
 
     config = cargar_config()
-    if not config["api_key"].strip():
-        print("Falta la clave de The Odds API. Corre primero 0_configurar_clave.bat")
+    if not args.sin_motor and not config["api_key"].strip():
+        print("Falta la clave de The Odds API. El bot ya corre en la nube: https://diegolany.github.io/simulador/")
         return 1
     con = conectar()
     inicializar(con, config)

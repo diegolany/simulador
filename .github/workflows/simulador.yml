@@ -4,7 +4,9 @@ name: Simulador de apuestas
 
 on:
   schedule:
-    - cron: "*/15 * * * *"
+    - cron: "7,22,37,52 * * * *"  # fuera de la hora en punto, cuando GitHub está más saturado
+  push:
+    branches: [main]              # cada actualización del código corre un ciclo de inmediato
   workflow_dispatch:
 
 concurrency:

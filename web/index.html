@@ -4,178 +4,280 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Simulador de apuestas</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 <style>
 :root {
   color-scheme: light;
-  --pagina: #f9f9f7; --superficie: #fcfcfb; --tinta: #0b0b0b; --tinta-2: #52514e; --tenue: #898781;
-  --reticula: #e1e0d9; --eje: #c3c2b7; --borde: rgba(11,11,11,0.10);
-  --serie-1: #2a78d6; --serie-2: #eb6834; --serie-3: #1baf7a; --bueno: #006300; --malo: #d03b3b; --aviso: #b07a00;
-  --resalte: rgba(42,120,214,0.08);
+  --pagina: #f3f4f6; --superficie: #ffffff; --superficie-2: #f7f7f5; --tinta: #0b0b0b; --tinta-2: #52514e;
+  --tenue: #898781; --reticula: #e8e7e1; --eje: #c3c2b7; --borde: rgba(11,11,11,0.08);
+  --serie-1: #2a78d6; --serie-2: #eb6834; --serie-3: #1baf7a; --bueno: #006300; --malo: #d03b3b; --vivo: #d03b3b;
+  --acento-suave: rgba(42,120,214,0.10); --bueno-suave: rgba(12,163,12,0.12); --malo-suave: rgba(208,59,59,0.10);
+  --sombra: 0 1px 2px rgba(16,24,40,0.04), 0 6px 20px rgba(16,24,40,0.05);
 }
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
     color-scheme: dark;
-    --pagina: #0d0d0d; --superficie: #1a1a19; --tinta: #ffffff; --tinta-2: #c3c2b7; --tenue: #898781;
-    --reticula: #2c2c2a; --eje: #383835; --borde: rgba(255,255,255,0.10);
-    --serie-1: #3987e5; --serie-2: #d95926; --serie-3: #199e70; --bueno: #0ca30c; --malo: #e66767; --aviso: #fab219;
-    --resalte: rgba(57,135,229,0.12);
+    --pagina: #0d0d0d; --superficie: #1a1a19; --superficie-2: #222220; --tinta: #ffffff; --tinta-2: #c3c2b7;
+    --tenue: #898781; --reticula: #2c2c2a; --eje: #383835; --borde: rgba(255,255,255,0.08);
+    --serie-1: #3987e5; --serie-2: #d95926; --serie-3: #199e70; --bueno: #0ca30c; --malo: #e66767; --vivo: #e66767;
+    --acento-suave: rgba(57,135,229,0.14); --bueno-suave: rgba(12,163,12,0.16); --malo-suave: rgba(230,103,103,0.14);
+    --sombra: none;
   }
 }
 :root[data-theme="dark"] {
   color-scheme: dark;
-  --pagina: #0d0d0d; --superficie: #1a1a19; --tinta: #ffffff; --tinta-2: #c3c2b7; --tenue: #898781;
-  --reticula: #2c2c2a; --eje: #383835; --borde: rgba(255,255,255,0.10);
-  --serie-1: #3987e5; --serie-2: #d95926; --serie-3: #199e70; --bueno: #0ca30c; --malo: #e66767; --aviso: #fab219;
-  --resalte: rgba(57,135,229,0.12);
+  --pagina: #0d0d0d; --superficie: #1a1a19; --superficie-2: #222220; --tinta: #ffffff; --tinta-2: #c3c2b7;
+  --tenue: #898781; --reticula: #2c2c2a; --eje: #383835; --borde: rgba(255,255,255,0.08);
+  --serie-1: #3987e5; --serie-2: #d95926; --serie-3: #199e70; --bueno: #0ca30c; --malo: #e66767; --vivo: #e66767;
+  --acento-suave: rgba(57,135,229,0.14); --bueno-suave: rgba(12,163,12,0.16); --malo-suave: rgba(230,103,103,0.14);
+  --sombra: none;
 }
 * { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
 body { margin: 0; background: var(--pagina); color: var(--tinta);
-  font: 14px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; }
-main { max-width: 1240px; margin: 0 auto; padding: 20px 16px 48px; }
-header { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 18px; }
-h1 { font-size: 22px; margin: 0; letter-spacing: -0.01em; }
-h2 { font-size: 15px; margin: 0 0 2px; }
-.sub { color: var(--tinta-2); font-size: 13px; }
-.ayuda { color: var(--tenue); font-size: 12.5px; margin: 0 0 12px; max-width: 80ch; }
-.acciones { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
-.pastilla { display: inline-flex; align-items: center; gap: 6px; padding: 5px 10px; border-radius: 999px;
-  border: 1px solid var(--borde); background: var(--superficie); font-size: 12.5px; color: var(--tinta-2); }
-.punto { width: 8px; height: 8px; border-radius: 50%; background: var(--tenue); }
-.activo .punto { background: var(--bueno); box-shadow: 0 0 0 3px color-mix(in srgb, var(--bueno) 25%, transparent); }
-button { font: inherit; padding: 7px 14px; border-radius: 8px; border: 1px solid var(--borde);
-  background: var(--serie-1); color: #fff; cursor: pointer; }
-button:disabled { opacity: .6; cursor: default; }
-.tarjeta { background: var(--superficie); border: 1px solid var(--borde); border-radius: 12px; padding: 16px; margin-bottom: 16px; }
-.kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 12px; margin-bottom: 16px; }
-.kpi { background: var(--superficie); border: 1px solid var(--borde); border-radius: 12px; padding: 14px 16px; }
-.kpi .etiqueta { color: var(--tinta-2); font-size: 12.5px; }
-.kpi .valor { font-size: 24px; font-weight: 650; margin: 4px 0 2px; letter-spacing: -0.01em; }
-.kpi .detalle { color: var(--tenue); font-size: 12px; }
+  font: 14px/1.5 Inter, system-ui, -apple-system, "Segoe UI", sans-serif; font-feature-settings: "cv11", "ss01"; }
+.num, .cifra, .valor, .momio, td.num { font-variant-numeric: tabular-nums; }
+button { font: inherit; cursor: pointer; }
+
+/* Barra superior y pestañas */
+.barra { position: sticky; top: 0; z-index: 10; background: color-mix(in srgb, var(--pagina) 86%, transparent);
+  backdrop-filter: blur(12px); border-bottom: 1px solid var(--borde); }
+.barra-dentro, main { max-width: 1200px; margin: 0 auto; padding-left: 16px; padding-right: 16px; }
+.barra-dentro { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding-top: 12px; }
+.marca { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.logo { width: 34px; height: 34px; flex: none; }
+.nombre { font-weight: 700; font-size: 16px; letter-spacing: -0.01em; }
+.sub { color: var(--tenue); font-size: 12.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.acciones { display: flex; align-items: center; gap: 8px; }
+.pastilla { display: inline-flex; align-items: center; gap: 7px; padding: 6px 11px; border-radius: 999px; font-size: 12.5px;
+  border: 1px solid var(--borde); background: var(--superficie); color: var(--tinta-2); white-space: nowrap; }
+.punto { width: 8px; height: 8px; border-radius: 50%; background: var(--tenue); flex: none; }
+.pastilla.en-linea .punto { background: var(--bueno); animation: latido 2s infinite; }
+.pastilla.detenido .punto { background: var(--malo); }
+@keyframes latido { 0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--bueno) 55%, transparent); }
+  70% { box-shadow: 0 0 0 7px transparent; } 100% { box-shadow: 0 0 0 0 transparent; } }
+.boton { padding: 7px 14px; border-radius: 9px; border: 0; background: var(--serie-1); color: #fff; font-weight: 600; }
+.boton:disabled { opacity: .6; cursor: default; }
+.boton-icono { width: 34px; height: 34px; border-radius: 9px; border: 1px solid var(--borde); background: var(--superficie);
+  color: var(--tinta-2); font-size: 15px; }
+.pestanas { display: flex; gap: 4px; overflow-x: auto; padding: 10px 16px 0; max-width: 1200px; margin: 0 auto; scrollbar-width: none; }
+.pestanas button { border: 0; background: none; color: var(--tinta-2); padding: 9px 14px 11px; font-weight: 600;
+  border-bottom: 2px solid transparent; white-space: nowrap; }
+.pestanas button.activa { color: var(--tinta); border-bottom-color: var(--serie-1); }
+.conteo { display: inline-block; min-width: 20px; padding: 0 6px; margin-left: 4px; border-radius: 999px; font-size: 11.5px;
+  background: var(--acento-suave); color: var(--serie-1); }
+.conteo:empty { display: none; }
+
+main { padding-top: 20px; padding-bottom: 48px; }
+.tarjeta { background: var(--superficie); border: 1px solid var(--borde); border-radius: 16px; padding: 18px; box-shadow: var(--sombra); }
+.pila > * + * { margin-top: 16px; }
+h3.seccion { font-size: 13px; text-transform: uppercase; letter-spacing: .06em; color: var(--tenue); font-weight: 600; margin: 26px 0 10px; }
+.etiqueta { color: var(--tinta-2); font-size: 12.5px; }
+.chica { color: var(--tenue); font-size: 12px; }
+.ayuda { color: var(--tenue); font-size: 12.5px; margin: 2px 0 12px; max-width: 85ch; }
 .bueno { color: var(--bueno); } .malo { color: var(--malo); } .tenue { color: var(--tenue); }
-.leyenda { display: flex; flex-wrap: wrap; gap: 16px; font-size: 12.5px; color: var(--tinta-2); margin: 4px 0 10px; }
+#aviso { display: none; background: var(--malo-suave); border: 1px solid var(--malo); border-radius: 12px; padding: 10px 14px; margin-bottom: 16px; }
+
+/* Héroe: banca y meta del mes */
+.heroe { background: linear-gradient(135deg, var(--acento-suave), transparent 55%), var(--superficie); }
+.heroe-cabeza { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 18px; align-items: flex-start; }
+.cifra { font-size: 40px; font-weight: 800; letter-spacing: -0.03em; line-height: 1.1; margin: 4px 0 6px; }
+.delta { display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px; border-radius: 999px; font-weight: 600; font-size: 13px;
+  background: var(--superficie-2); color: var(--tinta-2); }
+.delta.bueno { background: var(--bueno-suave); color: var(--bueno); } .delta.malo { background: var(--malo-suave); color: var(--malo); }
+.meta { min-width: 250px; flex: 0 1 320px; background: var(--superficie); border: 1px solid var(--borde); border-radius: 12px; padding: 12px 14px; }
+.barra-progreso { height: 8px; border-radius: 999px; background: var(--reticula); overflow: hidden; margin: 8px 0 6px; }
+.barra-progreso > i { display: block; height: 100%; border-radius: 999px; background: var(--serie-1); }
+.leyenda { display: flex; flex-wrap: wrap; gap: 16px; font-size: 12.5px; color: var(--tinta-2); margin: 18px 0 8px; }
 .leyenda span { display: inline-flex; align-items: center; gap: 6px; }
-.muestra { width: 22px; height: 0; border-top: 2px solid; display: inline-block; }
+.muestra { width: 20px; height: 0; border-top: 2px solid; display: inline-block; }
 .muestra.rayada { border-top-style: dashed; }
-.muestra.banda { height: 10px; border: 0; border-radius: 2px; }
-.grafica { position: relative; height: 300px; }
+.muestra.caja { height: 10px; border: 0; border-radius: 3px; width: 14px; }
+.grafica { position: relative; height: 280px; }
+
+/* Indicadores */
+.kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(165px, 1fr)); gap: 12px; }
+.kpi { background: var(--superficie); border: 1px solid var(--borde); border-radius: 14px; padding: 14px 16px; box-shadow: var(--sombra); }
+.kpi .icono { font-size: 16px; }
+.kpi .valor { font-size: 22px; font-weight: 700; margin: 6px 0 2px; letter-spacing: -0.01em; }
+
+/* Semanas */
+.semanas { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; }
+.semana { position: relative; }
+.semana.en_curso { border-color: var(--serie-1); box-shadow: 0 0 0 1px var(--serie-1) inset, var(--sombra); }
+.semana .fila { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+.semana .grande { font-size: 20px; font-weight: 700; }
+.chip { display: inline-flex; align-items: center; gap: 4px; font-size: 11.5px; font-weight: 600; padding: 2px 9px; border-radius: 999px;
+  background: var(--superficie-2); color: var(--tinta-2); white-space: nowrap; }
+.chip.bueno { background: var(--bueno-suave); color: var(--bueno); } .chip.malo { background: var(--malo-suave); color: var(--malo); }
+.chip.azul { background: var(--acento-suave); color: var(--serie-1); }
+
+/* Deportes */
+.deportes { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 12px; }
+.deporte-cabeza { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+.emoji { width: 36px; height: 36px; border-radius: 10px; background: var(--superficie-2); display: grid; place-items: center; font-size: 19px; flex: none; }
+.datos { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px 12px; margin-top: 10px; }
+.datos b { display: block; font-size: 14px; }
+
+/* Boletos de apuestas */
+.filtros { display: flex; gap: 8px; margin-bottom: 14px; flex-wrap: wrap; }
+.filtros button { border: 1px solid var(--borde); background: var(--superficie); color: var(--tinta-2); padding: 6px 12px; border-radius: 999px; font-weight: 500; }
+.filtros button.activo { background: var(--tinta); color: var(--pagina); border-color: transparent; }
+.boletos { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 12px; }
+.boleto { background: var(--superficie); border: 1px solid var(--borde); border-radius: 16px; box-shadow: var(--sombra); overflow: hidden; }
+.boleto.en-vivo { border-color: var(--vivo); }
+.boleto-cabeza { display: flex; justify-content: space-between; gap: 8px; padding: 12px 14px 0; font-size: 12.5px; color: var(--tinta-2); }
+.equipos { padding: 8px 14px 0; font-weight: 700; font-size: 15px; line-height: 1.35; }
+.equipos .vs { color: var(--tenue); font-weight: 500; font-size: 12px; margin: 0 4px; }
+.marcador { font-size: 13px; font-weight: 700; color: var(--vivo); }
+.vivo { display: inline-flex; align-items: center; gap: 5px; color: var(--vivo); font-weight: 700; font-size: 11.5px; letter-spacing: .04em; }
+.vivo::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--vivo); animation: parpadeo 1.2s infinite; }
+@keyframes parpadeo { 50% { opacity: .25; } }
+.eleccion { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin: 12px 14px; padding: 10px 12px;
+  border-radius: 12px; background: var(--superficie-2); }
+.momio { font-size: 22px; font-weight: 800; color: var(--serie-1); text-align: right; line-height: 1.1; }
+.momio small { display: block; font-size: 11.5px; font-weight: 600; color: var(--tenue); }
+.boleto-pie { display: grid; grid-template-columns: repeat(4, 1fr); border-top: 1px dashed var(--eje); }
+.boleto-pie div { padding: 9px 10px; font-size: 11.5px; color: var(--tenue); }
+.boleto-pie div + div { border-left: 1px solid var(--reticula); }
+.boleto-pie b { display: block; color: var(--tinta); font-size: 13px; }
+.vacio { color: var(--tenue); padding: 18px; text-align: center; border: 1px dashed var(--eje); border-radius: 14px; }
+
+/* Tablas */
 .tabla { overflow-x: auto; }
 table { width: 100%; border-collapse: collapse; font-size: 13px; }
-th { text-align: left; font-weight: 600; color: var(--tinta-2); font-size: 12px; padding: 8px 10px;
-  border-bottom: 1px solid var(--eje); white-space: nowrap; }
-td { padding: 8px 10px; border-bottom: 1px solid var(--reticula); vertical-align: top; }
-tr:hover td { background: var(--resalte); }
-.num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
-.chica { color: var(--tenue); font-size: 12px; }
-.insignia { display: inline-block; font-size: 11.5px; padding: 1px 8px; border-radius: 999px;
-  border: 1px solid var(--borde); color: var(--tinta-2); white-space: nowrap; }
-.insignia.principal { background: var(--serie-1); color: #fff; border-color: transparent; }
+th { text-align: left; font-weight: 600; color: var(--tenue); font-size: 11.5px; text-transform: uppercase; letter-spacing: .04em;
+  padding: 8px 10px; border-bottom: 1px solid var(--eje); white-space: nowrap; }
+td { padding: 10px; border-bottom: 1px solid var(--reticula); vertical-align: top; }
+tr:last-child td { border-bottom: 0; }
+td.num, th.num { text-align: right; white-space: nowrap; }
+details summary { cursor: pointer; font-weight: 600; }
+
+/* Laboratorio */
+.ranking .pos { width: 30px; height: 30px; border-radius: 9px; display: grid; place-items: center; font-weight: 700; background: var(--superficie-2); }
+.clv-barra { position: relative; width: 120px; height: 8px; background: var(--reticula); border-radius: 999px; margin: 6px 0 0 auto; }
+.clv-barra::after { content: ""; position: absolute; left: 50%; top: -3px; bottom: -3px; width: 1px; background: var(--eje); }
+.clv-barra i { position: absolute; top: 0; bottom: 0; border-radius: 999px; }
+.insignia { display: inline-block; font-size: 11px; font-weight: 600; padding: 1px 8px; border-radius: 999px; background: var(--superficie-2); color: var(--tinta-2); }
+.insignia.principal { background: var(--serie-1); color: #fff; }
 .insignia.retirada { color: var(--tenue); text-decoration: line-through; }
-.vacio { color: var(--tenue); padding: 14px 0 4px; }
-.dos { display: grid; grid-template-columns: repeat(auto-fit, minmax(380px, 1fr)); gap: 16px; }
-.dos .tarjeta { margin-bottom: 0; }
-.bitacora { list-style: none; margin: 0; padding: 0; max-height: 380px; overflow-y: auto; }
-.bitacora li { padding: 8px 0; border-bottom: 1px solid var(--reticula); }
-.bitacora .cuando { color: var(--tenue); font-size: 12px; margin-right: 6px; }
-details summary { cursor: pointer; color: var(--serie-1); font-size: 13px; margin-top: 10px; }
-footer { color: var(--tenue); font-size: 12.5px; line-height: 1.7; }
-#aviso { display: none; background: color-mix(in srgb, var(--malo) 12%, transparent); color: var(--tinta);
-  border: 1px solid var(--malo); border-radius: 10px; padding: 10px 14px; margin-bottom: 16px; }
-@media (max-width: 480px) { .dos { grid-template-columns: 1fr; } .kpi .valor { font-size: 21px; } }
+
+/* Bitácora */
+.linea { list-style: none; margin: 0; padding: 0; }
+.linea li { display: grid; grid-template-columns: 36px 1fr; gap: 12px; padding: 10px 0; position: relative; }
+.linea li + li::before { content: ""; position: absolute; left: 17px; top: -10px; height: 20px; width: 2px; background: var(--reticula); }
+.linea .icono { width: 36px; height: 36px; border-radius: 50%; display: grid; place-items: center; background: var(--superficie-2); font-size: 16px; }
+
+footer { margin-top: 28px; color: var(--tenue); font-size: 12.5px; line-height: 1.8; }
+[hidden] { display: none !important; }
+@media (max-width: 560px) {
+  .cifra { font-size: 32px; } .boton { display: none; } .sub { display: none; }
+  .boleto-pie { grid-template-columns: repeat(2, 1fr); } .boleto-pie div:nth-child(3) { border-left: 0; }
+  .boleto-pie div:nth-child(n+3) { border-top: 1px solid var(--reticula); }
+}
 </style>
 </head>
 <body>
-<main>
-  <header>
-    <div>
-      <h1>Simulador de apuestas</h1>
-      <div class="sub" id="subtitulo">Banca ficticia · momios reales</div>
+<header class="barra">
+  <div class="barra-dentro">
+    <div class="marca">
+      <svg class="logo" viewBox="0 0 34 34" aria-hidden="true"><rect width="34" height="34" rx="9" fill="var(--serie-1)"/>
+        <path d="M8 23l6-6 4 4 8-9" stroke="#fff" stroke-width="2.6" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+        <circle cx="26" cy="12" r="2.4" fill="#fff"/></svg>
+      <div style="min-width:0"><div class="nombre">Simulador de apuestas</div><div class="sub" id="subtitulo">Banca ficticia · momios reales</div></div>
     </div>
     <div class="acciones">
-      <span class="pastilla" id="motor"><span class="punto"></span><span>Conectando…</span></span>
-      <button id="buscar" title="Busca momios nuevos ahora, respetando los créditos del día">Buscar momios ahora</button>
+      <span class="pastilla" id="motor"><span class="punto"></span><span class="texto">Conectando…</span></span>
+      <button class="boton-icono" id="tema" title="Cambiar tema claro / oscuro" aria-label="Cambiar tema">◐</button>
+      <button class="boton" id="buscar" title="Busca momios ahora, respetando los créditos del día">Buscar momios</button>
     </div>
-  </header>
+  </div>
+  <nav class="pestanas" role="tablist">
+    <button data-pestana="resumen" class="activa">Resumen</button>
+    <button data-pestana="apuestas">Apuestas<span class="conteo" id="conteo-activas"></span></button>
+    <button data-pestana="laboratorio">Laboratorio</button>
+    <button data-pestana="bitacora">Bitácora</button>
+  </nav>
+</header>
 
+<main>
   <div id="aviso"></div>
 
-  <section class="kpis" id="kpis"></section>
-
-  <section class="tarjeta">
-    <h2>Banca: real vs objetivo</h2>
-    <p class="ayuda">La línea azul es la banca real (solo apuestas ya liquidadas). El área naranja es el rango donde
-      normalmente cae el resultado por pura suerte si el valor que calculamos es correcto: mientras la línea azul
-      esté dentro, la diferencia contra lo esperado es varianza, no error del método.</p>
-    <div class="leyenda">
-      <span><i class="muestra" style="border-color:var(--serie-1)"></i>Real</span>
-      <span><i class="muestra rayada" style="border-color:var(--tenue)"></i>Objetivo</span>
-      <span><i class="muestra rayada" style="border-color:var(--serie-2)"></i>Esperado</span>
-      <span><i class="muestra banda" style="background:color-mix(in srgb, var(--serie-2) 22%, transparent)"></i>Rango normal por suerte</span>
+  <section data-panel="resumen">
+    <div class="tarjeta heroe">
+      <div class="heroe-cabeza">
+        <div>
+          <div class="etiqueta">Banca de la estrategia Principal</div>
+          <div class="cifra" id="banca">—</div>
+          <span class="delta" id="delta"></span>
+        </div>
+        <div class="meta" id="meta"></div>
+      </div>
+      <div class="leyenda">
+        <span><i class="muestra" style="border-color:var(--serie-1)"></i>Real</span>
+        <span><i class="muestra rayada" style="border-color:var(--tenue)"></i>Objetivo</span>
+        <span><i class="muestra rayada" style="border-color:var(--serie-2)"></i>Esperado</span>
+        <span><i class="muestra caja" style="background:color-mix(in srgb, var(--serie-2) 22%, transparent)"></i>Rango normal por suerte</span>
+      </div>
+      <div class="grafica"><canvas id="curva" role="img" aria-label="Banca real contra objetivo y esperado por día"></canvas></div>
+      <p class="ayuda" style="margin:10px 0 0">Mientras la línea azul esté dentro del área naranja, la diferencia contra lo esperado es suerte, no error del método.</p>
     </div>
-    <div class="grafica"><canvas id="curva" role="img" aria-label="Banca real contra objetivo y esperado por día"></canvas></div>
-  </section>
 
-  <section class="tarjeta">
-    <h2>Créditos de la API</h2>
-    <p class="ayuda">Cada consulta de momios o resultados gasta créditos del plan gratis (500 al mes). El bot reparte lo
-      que queda entre los días restantes y nunca toca la reserva de emergencia, así que alcanzan para las 4 semanas.</p>
-    <div class="kpis" id="creditos-kpis" style="margin-bottom:8px"></div>
-    <div class="leyenda">
-      <span><i class="muestra banda" style="background:var(--serie-1)"></i>Búsqueda de momios</span>
-      <span><i class="muestra banda" style="background:var(--serie-2)"></i>Foto de cierre</span>
-      <span><i class="muestra banda" style="background:var(--serie-3)"></i>Resultados</span>
-      <span><i class="muestra rayada" style="border-color:var(--tenue)"></i>Ritmo que alcanza para el mes</span>
+    <h3 class="seccion">Indicadores</h3>
+    <div class="kpis" id="kpis"></div>
+
+    <h3 class="seccion">Objetivo por semana</h3>
+    <div class="semanas" id="semanas"></div>
+
+    <h3 class="seccion">Por deporte</h3>
+    <div class="deportes" id="deportes"></div>
+    <details class="tarjeta" style="margin-top:12px"><summary>Detalle por liga</summary><div class="tabla" id="ligas" style="margin-top:10px"></div></details>
+
+    <h3 class="seccion">Créditos de la API</h3>
+    <div class="tarjeta">
+      <p class="ayuda">Cada consulta de momios gasta créditos del plan gratis (500 al mes). Los marcadores vienen gratis de ESPN. El bot reparte
+        lo que queda entre los días restantes y nunca toca la reserva de emergencia.</p>
+      <div class="kpis" id="creditos-kpis"></div>
+      <div class="leyenda">
+        <span><i class="muestra caja" style="background:var(--serie-1)"></i>Búsqueda de momios</span>
+        <span><i class="muestra caja" style="background:var(--serie-2)"></i>Foto de cierre</span>
+        <span><i class="muestra caja" style="background:var(--serie-3)"></i>Resultados (respaldo)</span>
+        <span><i class="muestra rayada" style="border-color:var(--tenue)"></i>Ritmo que alcanza para el mes</span>
+      </div>
+      <div class="grafica" style="height:200px"><canvas id="creditos" role="img" aria-label="Créditos usados por día"></canvas></div>
     </div>
-    <div class="grafica" style="height:220px"><canvas id="creditos" role="img" aria-label="Créditos usados por día"></canvas></div>
   </section>
 
-  <section class="tarjeta">
-    <h2>Objetivo por semana</h2>
-    <p class="ayuda">Objetivos acumulados sobre la banca inicial. Con pocas semanas de datos el resultado depende mucho
-      de la suerte; el CLV es el indicador que dice antes si el método funciona.</p>
-    <div class="tabla" id="semanas"></div>
+  <section data-panel="apuestas" hidden>
+    <div class="filtros" id="filtros">
+      <button data-filtro="Principal" class="activo">Principal</button>
+      <button data-filtro="todas">Todas las estrategias</button>
+    </div>
+    <div class="boletos" id="activas"></div>
+    <h3 class="seccion">Historial de la Principal</h3>
+    <div class="tarjeta"><div class="tabla" id="historial"></div></div>
   </section>
 
-  <section class="tarjeta">
-    <h2>Apuestas activas</h2>
-    <p class="ayuda">"Mercado" compara el momio que tomamos contra la probabilidad justa más reciente de Pinnacle:
-      positivo significa que el mercado se movió a nuestro favor desde que apostamos.</p>
-    <div class="tabla" id="activas"></div>
-  </section>
-
-  <section class="tarjeta">
-    <h2>Resultados por deporte</h2>
-    <p class="ayuda">Rendimiento = ganancia ÷ total apostado (las apuestas anuladas no cuentan).</p>
-    <div class="tabla" id="deportes"></div>
-    <details><summary>Ver por liga</summary><div class="tabla" id="ligas"></div></details>
-  </section>
-
-  <section class="tarjeta">
-    <h2>Laboratorio: cómo aprende el bot</h2>
-    <p class="ayuda">Cada estrategia apuesta con su propia banca ficticia de $100,000 sobre los mismos momios. Cada semana
-      el bot compara su CLV: si una retadora le gana claramente a la Principal, la Principal adopta sus reglas; las que
-      pierden contra el mercado se retiran y se crean variantes nuevas para seguir buscando mejoras.</p>
-    <div class="tabla" id="laboratorio"></div>
-  </section>
-
-  <div class="dos">
-    <section class="tarjeta">
-      <h2>Bitácora de aprendizaje</h2>
-      <p class="ayuda">Lo que el bot ha decidido y por qué.</p>
-      <ul class="bitacora" id="bitacora"></ul>
-    </section>
-    <section class="tarjeta">
-      <h2>Calibración</h2>
-      <p class="ayuda">¿Las probabilidades que calculamos se cumplen? Si estimamos 40% y ganamos cerca de 40% de esas
-        apuestas, el cálculo está bien calibrado. Se necesitan cientos de apuestas para que sea confiable.</p>
+  <section data-panel="laboratorio" hidden>
+    <div class="tarjeta">
+      <p class="ayuda" style="margin:0">Cada estrategia apuesta con su propia banca de $100,000 sobre los mismos momios. El ranking se ordena por
+        <b>CLV</b> (si conseguimos mejores momios que el mercado al cierre), que muestra antes que la ganancia si un método funciona.
+        Cada semana: si una retadora le gana claramente a la Principal, la Principal adopta sus reglas; las que pierden se retiran y nacen variantes nuevas.</p>
+    </div>
+    <h3 class="seccion">Ranking de estrategias</h3>
+    <div class="tarjeta"><div class="tabla ranking" id="laboratorio"></div></div>
+    <h3 class="seccion">Calibración</h3>
+    <div class="tarjeta">
+      <p class="ayuda">Si estimamos 40% y ganamos cerca de 40% de esas apuestas, el cálculo está bien calibrado. Necesita cientos de apuestas.</p>
       <div class="tabla" id="calibracion"></div>
-    </section>
-  </div>
+    </div>
+  </section>
 
-  <section class="tarjeta" style="margin-top:16px">
-    <h2>Historial</h2>
-    <p class="ayuda">Últimas 40 apuestas liquidadas de la Principal.</p>
-    <div class="tabla" id="historial"></div>
+  <section data-panel="bitacora" hidden>
+    <div class="tarjeta"><ol class="linea" id="bitacora"></ol></div>
   </section>
 
   <footer id="sistema"></footer>
@@ -183,8 +285,7 @@ footer { color: var(--tenue); font-size: 12.5px; line-height: 1.7; }
 
 <script>
 const $ = s => document.querySelector(s);
-// En internet (GitHub Pages) no hay servidor: se lee estado.json, que el bot publica en cada ciclo
-const ESTATICO = !location.port;
+const ESTATICO = !location.port;  // en internet (GitHub Pages) se lee estado.json, sin servidor
 const dinero = new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN', maximumFractionDigits: 0 });
 const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 const pct = (v, d = 1) => v == null ? '—' : (v * 100).toFixed(d) + '%';
@@ -196,7 +297,16 @@ const conSigno = (v, texto) => v == null ? '<span class="tenue">—</span>' : `<
 const fecha = iso => new Date(iso).toLocaleString('es-MX', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
 const dia = iso => new Date(iso).toLocaleDateString('es-MX', { day: '2-digit', month: 'short' });
 const americano = d => d >= 2 ? '+' + Math.round((d - 1) * 100) : '−' + Math.round(100 / (d - 1));
+const EMOJI = { 'Fútbol': '⚽', 'Básquetbol': '🏀', 'Fútbol americano': '🏈', 'Béisbol': '⚾', 'Hockey': '🏒', 'MMA': '🥊', 'Box': '🥊', 'Tenis': '🎾' };
+const emoji = d => EMOJI[d] || '🏆';
 
+function hace(iso) {
+  const min = Math.round((Date.now() - new Date(iso)) / 60000);
+  if (min < 1) return 'hace un momento';
+  if (min < 60) return `hace ${min} min`;
+  const h = Math.floor(min / 60);
+  return h < 48 ? `hace ${h} h ${min % 60} min` : `hace ${Math.floor(h / 24)} días`;
+}
 function cuenta(iso) {
   const ms = new Date(iso) - Date.now();
   if (ms <= 0) return null;
@@ -204,220 +314,232 @@ function cuenta(iso) {
   if (h >= 24) return `en ${Math.floor(h / 24)} d ${h % 24} h`;
   return h ? `en ${h} h ${m} min` : `en ${m} min`;
 }
-
 function tabla(columnas, filas, vacio) {
   if (!filas.length) return `<div class="vacio">${vacio}</div>`;
   const cab = columnas.map(c => `<th class="${c.num ? 'num' : ''}">${c.t}</th>`).join('');
   const cuerpo = filas.map(f => '<tr>' + columnas.map(c => `<td class="${c.num ? 'num' : ''}">${c.v(f)}</td>`).join('') + '</tr>').join('');
   return `<table><thead><tr>${cab}</tr></thead><tbody>${cuerpo}</tbody></table>`;
 }
+const kpi = (icono, etiqueta, valor, detalle) =>
+  `<div class="kpi"><div class="etiqueta"><span class="icono">${icono}</span> ${etiqueta}</div><div class="valor">${valor}</div><div class="chica">${detalle}</div></div>`;
 
-let datos = null, grafica = null;
+let datos = null, grafica = null, graficaCreditos = null, filtro = 'Principal';
+
+function heroe(d) {
+  const g = d.banca - d.banca_inicial;
+  $('#banca').textContent = dinero.format(d.banca);
+  const delta = $('#delta');
+  delta.className = 'delta ' + tono(g);
+  delta.textContent = `${flecha(g)}${sdinero(g)} (${spct(g / d.banca_inicial, 2)}) desde el inicio`;
+  const ultima = d.semanas[d.semanas.length - 1];
+  const avance = Math.max(0, Math.min(1, g / (ultima.banca_objetivo - d.banca_inicial)));
+  const actual = d.semanas.find(s => s.situacion === 'en_curso');
+  $('#meta').innerHTML = `
+    <div class="etiqueta">🎯 Meta de las ${d.semanas.length} semanas</div>
+    <div style="font-size:20px;font-weight:700;margin-top:2px">${dinero.format(ultima.banca_objetivo)} <span class="chica">(${spct(ultima.objetivo, 1)})</span></div>
+    <div class="barra-progreso"><i style="width:${(avance * 100).toFixed(1)}%"></i></div>
+    <div class="chica">${(avance * 100).toFixed(0)}% logrado · ${actual ? `Semana ${actual.semana} en curso` : 'Periodo terminado'}</div>`;
+}
 
 function kpis(d) {
-  const r = d.resumen, g = d.banca - d.banca_inicial;
-  const tarjetas = [
-    ['Banca actual', dinero.format(d.banca), `Inicial ${dinero.format(d.banca_inicial)}`],
-    ['Ganancia / pérdida', conSigno(g, sdinero(g)), `${spct(g / d.banca_inicial, 2)} sobre la banca inicial`],
-    ['Rendimiento', conSigno(r.rendimiento, spct(r.rendimiento)), `${dinero.format(r.apostado)} apostados en ${r.liquidadas} apuestas`],
-    ['CLV promedio', conSigno(r.clv, spct(r.clv)), `Objetivo ≥ ${spct(d.clv_objetivo)} · ${r.clv_n} medidas`],
-    ['Apuestas activas', r.abiertas, `${dinero.format(r.en_juego)} en juego · ${dinero.format(d.disponible)} libres`],
-    ['Acierto', pct(r.acierto), `${r.ganadas} ganadas de ${r.liquidadas} liquidadas`],
-  ];
-  $('#kpis').innerHTML = tarjetas.map(([e, v, det]) =>
-    `<div class="kpi"><div class="etiqueta">${e}</div><div class="valor">${v}</div><div class="detalle">${det}</div></div>`).join('');
+  const r = d.resumen;
+  $('#kpis').innerHTML = [
+    kpi('📈', 'Rendimiento', conSigno(r.rendimiento, spct(r.rendimiento)), `sobre ${dinero.format(r.apostado)} apostados`),
+    kpi('🧭', 'CLV promedio', conSigno(r.clv, spct(r.clv)), `objetivo ≥ ${spct(d.clv_objetivo)} · ${r.clv_n} medidas`),
+    kpi('🎯', 'Acierto', pct(r.acierto), `${r.ganadas} de ${r.liquidadas} liquidadas`),
+    kpi('🎟️', 'Apuestas activas', r.abiertas, `${dinero.format(r.en_juego)} en juego`),
+    kpi('💵', 'Disponible', dinero.format(d.disponible), 'para nuevas apuestas'),
+  ].join('');
 }
 
 function colores() {
   const v = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
-  return { s1: v('--serie-1'), s2: v('--serie-2'), s3: v('--serie-3'), tenue: v('--tenue'), reticula: v('--reticula'), tinta2: v('--tinta-2') };
+  return { s1: v('--serie-1'), s2: v('--serie-2'), s3: v('--serie-3'), tenue: v('--tenue'), reticula: v('--reticula'), sup: v('--superficie') };
 }
 
 function dibujarCurva(c) {
+  if (!window.Chart) return;
   const k = colores();
-  const banda = `color-mix(in srgb, ${k.s2} 22%, transparent)`;
   const conjuntos = [
-    { label: 'banda_alta', data: c.banda_alta, borderWidth: 0, pointRadius: 0, fill: '+1', backgroundColor: banda },
+    { label: 'banda_alta', data: c.banda_alta, borderWidth: 0, pointRadius: 0, fill: '+1', backgroundColor: `color-mix(in srgb, ${k.s2} 20%, transparent)` },
     { label: 'banda_baja', data: c.banda_baja, borderWidth: 0, pointRadius: 0, fill: false },
     { label: 'Esperado', data: c.esperado, borderColor: k.s2, borderDash: [4, 4], borderWidth: 2, pointRadius: 0 },
     { label: 'Objetivo', data: c.objetivo, borderColor: k.tenue, borderDash: [6, 4], borderWidth: 2, pointRadius: 0 },
-    { label: 'Real', data: c.real, borderColor: k.s1, backgroundColor: k.s1, borderWidth: 2, pointRadius: 0,
-      pointHoverRadius: 5, pointHoverBorderWidth: 2, pointHoverBorderColor: getComputedStyle(document.body).backgroundColor },
+    { label: 'Real', data: c.real, borderColor: k.s1, backgroundColor: k.s1, borderWidth: 2.5, pointRadius: 0, pointHoverRadius: 5,
+      pointHoverBorderWidth: 2, pointHoverBorderColor: k.sup },
   ];
-  const maxDia = Math.max(28, ...c.objetivo.map(p => p.x));
   const opciones = {
     responsive: true, maintainAspectRatio: false, animation: false,
     interaction: { mode: 'index', intersect: false },
-    plugins: {
-      legend: { display: false },
-      tooltip: {
-        filter: i => !i.dataset.label.startsWith('banda'),
-        callbacks: {
-          title: items => items.length ? `Día ${Math.floor(items[0].parsed.x)}` : '',
-          label: i => ` ${i.dataset.label}: ${dinero.format(i.parsed.y)}`,
-        },
-      },
-    },
+    plugins: { legend: { display: false }, tooltip: {
+      filter: i => !i.dataset.label.startsWith('banda'),
+      callbacks: { title: it => it.length ? `Día ${Math.floor(it[0].parsed.x)}` : '', label: i => ` ${i.dataset.label}: ${dinero.format(i.parsed.y)}` } } },
     scales: {
-      x: { type: 'linear', min: 0, max: maxDia, grid: { color: k.reticula }, border: { color: k.reticula },
+      x: { type: 'linear', min: 0, max: Math.max(28, ...c.objetivo.map(p => p.x)), grid: { display: false }, border: { color: k.reticula },
            ticks: { stepSize: 7, color: k.tenue, callback: v => `Día ${v}` } },
-      y: { grid: { color: k.reticula }, border: { display: false },
-           ticks: { color: k.tenue, callback: v => dinero.format(v) } },
+      y: { grid: { color: k.reticula }, border: { display: false }, ticks: { color: k.tenue, callback: v => dinero.format(v) } },
     },
   };
-  if (!window.Chart) return;
   if (grafica) { grafica.data.datasets = conjuntos; grafica.options = opciones; grafica.update(); return; }
   grafica = new Chart($('#curva'), { type: 'line', data: { datasets: conjuntos }, options: opciones });
 }
 
 function semanas(d) {
-  const estados = {
-    cumplido: '<span class="bueno">✓ Cumplido</span>', no_cumplido: '<span class="malo">✗ No cumplido</span>',
-    en_curso: '<span>● En curso</span>', pendiente: '<span class="tenue">○ Pendiente</span>',
-  };
-  $('#semanas').innerHTML = tabla([
-    { t: 'Semana', v: s => `Semana ${s.semana}` },
-    { t: 'Periodo', v: s => `${dia(s.desde)} – ${dia(new Date(new Date(s.hasta) - 1))}` },
-    { t: 'Objetivo', num: 1, v: s => spct(s.objetivo, 2) },
-    { t: 'Real', num: 1, v: s => s.real == null ? '<span class="tenue">—</span>' : conSigno(s.real, spct(s.real, 2)) },
-    { t: 'Banca objetivo', num: 1, v: s => dinero.format(s.banca_objetivo) },
-    { t: 'Banca real', num: 1, v: s => s.banca_real == null ? '<span class="tenue">—</span>' : dinero.format(s.banca_real) },
-    { t: 'Diferencia', num: 1, v: s => s.real == null ? '<span class="tenue">—</span>' : conSigno(s.real - s.objetivo, sdinero((s.real - s.objetivo) * d.banca_inicial)) },
-    { t: 'Estado', v: s => estados[s.situacion] },
-  ], d.semanas, '');
+  const chips = { cumplido: '<span class="chip bueno">✓ Cumplido</span>', no_cumplido: '<span class="chip malo">✗ No cumplido</span>',
+    en_curso: '<span class="chip azul">● En curso</span>', pendiente: '<span class="chip">○ Pendiente</span>' };
+  $('#semanas').innerHTML = d.semanas.map(s => {
+    const avance = s.real == null ? 0 : Math.max(0, Math.min(1, s.real / s.objetivo));
+    return `<div class="tarjeta semana ${s.situacion}">
+      <div class="fila"><b>Semana ${s.semana}</b>${chips[s.situacion]}</div>
+      <div class="chica">${dia(s.desde)} – ${dia(new Date(new Date(s.hasta) - 1))}</div>
+      <div class="fila" style="margin-top:10px"><div><div class="chica">Objetivo</div><div class="grande">${spct(s.objetivo, 2)}</div></div>
+        <div style="text-align:right"><div class="chica">Real</div><div class="grande">${s.real == null ? '<span class="tenue">—</span>' : conSigno(s.real, spct(s.real, 2))}</div></div></div>
+      <div class="barra-progreso"><i style="width:${(avance * 100).toFixed(1)}%;background:${s.real != null && s.real < 0 ? 'var(--malo)' : 'var(--serie-1)'}"></i></div>
+      <div class="chica">Banca objetivo ${dinero.format(s.banca_objetivo)}${s.banca_real != null ? ` · real ${dinero.format(s.banca_real)}` : ''}</div>
+    </div>`;
+  }).join('');
 }
-
-function activas(d) {
-  const fase = a => a.fase === 'por_empezar' ? (cuenta(a.inicio) || 'Empezando')
-    : a.fase === 'en_juego' ? `<span class="bueno">● En juego${a.marcador ? ' · ' + esc(a.marcador) : ''}</span>` +
-      (a.detalle ? `<div class="chica">${esc(a.detalle)}</div>` : '')
-    : '<span class="tenue">Esperando resultado</span>';
-  $('#activas').innerHTML = tabla([
-    { t: 'Partido', v: a => `${esc(a.partido)}<div class="chica">${esc(a.deporte)} · ${esc(a.liga)}</div>` },
-    { t: 'Inicio', v: a => `${fase(a)}<div class="chica">${fecha(a.inicio)}</div>` },
-    { t: 'Apuesta', v: a => `${esc(a.seleccion)}<div class="chica">${esc(a.casa)}</div>` },
-    { t: 'Momio', num: 1, v: a => `${a.momio.toFixed(2)}<div class="chica">${americano(a.momio)}</div>` },
-    { t: 'Monto', num: 1, v: a => dinero.format(a.monto) },
-    { t: 'Ganaría', num: 1, v: a => dinero.format(a.potencial) },
-    { t: 'Prob. justa', num: 1, v: a => pct(a.prob) },
-    { t: 'Valor al apostar', num: 1, v: a => conSigno(a.valor, spct(a.valor)) },
-    { t: 'Mercado', num: 1, v: a => a.movimiento == null ? '<span class="tenue" title="Aún no hay foto nueva de Pinnacle">—</span>' : conSigno(a.movimiento, spct(a.movimiento)) },
-  ], d.activas, 'No hay apuestas activas. El motor busca momios a las ' + d.sistema.horas_barrido.join(', ') + ' h.');
-}
-
-const columnasResumen = [
-  { t: 'Apuestas', num: 1, v: r => `${r.apuestas}${r.abiertas ? `<div class="chica">${r.abiertas} activas</div>` : ''}` },
-  { t: 'Acierto', num: 1, v: r => pct(r.acierto) },
-  { t: 'Apostado', num: 1, v: r => dinero.format(r.apostado) },
-  { t: 'Ganancia', num: 1, v: r => conSigno(r.ganancia, sdinero(r.ganancia)) },
-  { t: 'Rendimiento', num: 1, v: r => conSigno(r.rendimiento, spct(r.rendimiento)) },
-  { t: 'CLV', num: 1, v: r => r.clv == null ? '<span class="tenue">—</span>' : `${conSigno(r.clv, spct(r.clv))}<div class="chica">${r.clv_n} medidas</div>` },
-];
 
 function deportes(d) {
-  $('#deportes').innerHTML = tabla([{ t: 'Deporte', v: r => esc(r.deporte) }, ...columnasResumen], d.deportes,
-    'Todavía no hay apuestas.');
-  $('#ligas').innerHTML = tabla([{ t: 'Liga', v: r => `${esc(r.liga)}<div class="chica">${esc(r.deporte)}</div>` }, ...columnasResumen],
-    d.ligas, 'Todavía no hay apuestas.');
+  $('#deportes').innerHTML = d.deportes.length ? d.deportes.map(r => `
+    <div class="tarjeta">
+      <div class="deporte-cabeza"><div class="emoji">${emoji(r.deporte)}</div><div><b>${esc(r.deporte)}</b>
+        <div class="chica">${r.apuestas} apuestas${r.abiertas ? ` · ${r.abiertas} activas` : ''}</div></div></div>
+      <div class="chica">Ganancia</div><div style="font-size:20px;font-weight:700">${conSigno(r.ganancia, sdinero(r.ganancia))}</div>
+      <div class="datos">
+        <div><span class="chica">Rendimiento</span><b>${conSigno(r.rendimiento, spct(r.rendimiento))}</b></div>
+        <div><span class="chica">CLV</span><b>${conSigno(r.clv, spct(r.clv))}</b></div>
+        <div><span class="chica">Acierto</span><b>${pct(r.acierto)}</b></div>
+        <div><span class="chica">Apostado</span><b>${dinero.format(r.apostado)}</b></div>
+      </div>
+    </div>`).join('') : '<div class="vacio">La Principal todavía no tiene apuestas. Aparecen aquí en cuanto encuentre valor.</div>';
+  $('#ligas').innerHTML = tabla([
+    { t: 'Liga', v: r => `${emoji(r.deporte)} ${esc(r.liga)}` },
+    { t: 'Apuestas', num: 1, v: r => r.apuestas },
+    { t: 'Acierto', num: 1, v: r => pct(r.acierto) },
+    { t: 'Ganancia', num: 1, v: r => conSigno(r.ganancia, sdinero(r.ganancia)) },
+    { t: 'Rendimiento', num: 1, v: r => conSigno(r.rendimiento, spct(r.rendimiento)) },
+    { t: 'CLV', num: 1, v: r => conSigno(r.clv, spct(r.clv)) },
+  ], d.ligas, 'Todavía no hay apuestas.');
 }
 
-function laboratorio(d) {
-  const roles = { principal: 'Principal', retadora: 'Retadora', control: 'Control', retirada: 'Retirada' };
-  $('#laboratorio').innerHTML = tabla([
-    { t: 'Estrategia', v: e => `${esc(e.nombre)}<div><span class="insignia ${e.rol}">${roles[e.rol]}</span></div>` },
-    { t: 'Regla', v: e => `<span class="chica" style="color:var(--tinta-2)">${esc(e.descripcion)}</span>` +
-        ((e.parametros.ligas_bloqueadas || []).length ? `<div class="chica">Ligas evitadas: ${esc(e.parametros.ligas_bloqueadas.join(', '))}</div>` : '') +
-        ((e.parametros.casas_bloqueadas || []).length ? `<div class="chica">Casas evitadas: ${esc(e.parametros.casas_bloqueadas.join(', '))}</div>` : '') },
-    ...columnasResumen,
-    { t: 'Banca', num: 1, v: e => dinero.format(e.banca) },
-  ], d.laboratorio, '');
-}
-
-function bitacora(d) {
-  $('#bitacora').innerHTML = d.bitacora.map(b =>
-    `<li><span class="cuando">${fecha(b.fecha)}</span><span class="insignia">${esc(b.tipo)}</span><div>${esc(b.mensaje)}</div></li>`).join('')
-    || '<li class="vacio">Sin entradas todavía.</li>';
-}
-
-function calibracion(d) {
-  $('#calibracion').innerHTML = tabla([
-    { t: 'Probabilidad', v: c => c.tramo },
-    { t: 'Apuestas', num: 1, v: c => c.n },
-    { t: 'Estimada', num: 1, v: c => pct(c.estimada) },
-    { t: 'Real', num: 1, v: c => pct(c.real) },
-  ], d.calibracion, 'Aparece cuando haya apuestas liquidadas.');
-}
-
-function historial(d) {
-  const res = { ganada: '<span class="bueno">✓ Ganada</span>', perdida: '<span class="malo">✗ Perdida</span>', anulada: '<span class="tenue">↺ Anulada</span>' };
-  $('#historial').innerHTML = tabla([
-    { t: 'Liquidada', v: h => fecha(h.liquidada) },
-    { t: 'Partido', v: h => `${esc(h.partido)}<div class="chica">${esc(h.deporte)} · ${esc(h.liga)}</div>` },
-    { t: 'Apuesta', v: h => `${esc(h.seleccion)}<div class="chica">${esc(h.casa)}</div>` },
-    { t: 'Momio', num: 1, v: h => h.momio.toFixed(2) },
-    { t: 'Monto', num: 1, v: h => dinero.format(h.monto) },
-    { t: 'Resultado', v: h => `${res[h.estado]}<div class="chica">${esc(h.marcador || h.nota || '')}</div>` },
-    { t: 'Ganancia', num: 1, v: h => conSigno(h.ganancia, sdinero(h.ganancia)) },
-    { t: 'CLV', num: 1, v: h => h.clv == null ? '<span class="tenue">—</span>' : conSigno(h.clv, spct(h.clv)) },
-  ], d.historial, 'Todavía no hay apuestas liquidadas.');
-}
-
-function sistema(d) {
-  const s = d.sistema;
-  const pill = $('#motor');
-  pill.classList.toggle('activo', s.motor_activo);
-  pill.lastElementChild.textContent = s.motor_activo ? 'Motor activo' : 'Motor detenido';
-  $('#subtitulo').textContent = `Día ${d.dia} de la simulación · banca ficticia, momios reales`;
-  const hace = s.ultimo_ciclo ? Math.round((Date.now() - new Date(s.ultimo_ciclo)) / 60000) : null;
-  $('#sistema').innerHTML = [
-    `Créditos de la API: <b>${s.creditos_restantes ?? '—'}</b> restantes este mes · ${s.creditos_hoy ?? '—'} disponibles hoy`,
-    `Barridos de momios a las ${s.horas_barrido.join(', ')} h; resultados y fotos de cierre se piden según haga falta.`,
-    `Próxima revisión de aprendizaje: ${s.proxima_revision ? fecha(s.proxima_revision) : '—'}`,
-    `Último ciclo del motor: ${hace == null ? '—' : hace < 1 ? 'hace menos de un minuto' : `hace ${hace} min`} · Inicio de la simulación: ${fecha(d.inicio)}`,
-  ].join('<br>');
-}
-
-let graficaCreditos = null;
 function creditos(d) {
   const c = d.creditos, k = colores();
   const alcanza = c.ritmo_restante != null && c.ritmo_restante >= 1;
   $('#creditos-kpis').innerHTML = [
-    ['Usados este mes', `${c.usados ?? '—'} <span class="chica">de ${c.total}</span>`, c.usados == null ? '' : `${pct(c.usados / c.total)} del plan mensual`],
-    ['Restantes', c.restantes ?? '—', `Incluye ${c.reserva} de reserva de emergencia`],
-    ['Usados hoy', c.hoy, `${c.disponibles_hoy ?? '—'} más disponibles hoy`],
-    ['Ritmo restante', c.ritmo_restante == null ? '—' : `${c.ritmo_restante.toFixed(1)} <span class="chica">por día</span>`,
-      alcanza ? '<span class="bueno">✓ Alcanza hasta fin de mes</span>' : '<span class="malo">✗ Créditos casi agotados</span>'],
-  ].map(([e, v, det]) => `<div class="kpi"><div class="etiqueta">${e}</div><div class="valor">${v}</div><div class="detalle">${det}</div></div>`).join('');
+    kpi('🔋', 'Usados este mes', `${c.usados ?? '—'} <span class="chica">de ${c.total}</span>`, c.usados == null ? '' : `${pct(c.usados / c.total)} del plan`),
+    kpi('🪙', 'Restantes', c.restantes ?? '—', `incluye ${c.reserva} de reserva`),
+    kpi('📅', 'Usados hoy', c.hoy, `${c.disponibles_hoy ?? '—'} más disponibles hoy`),
+    kpi('⏱️', 'Ritmo restante', c.ritmo_restante == null ? '—' : `${c.ritmo_restante.toFixed(1)} <span class="chica">/ día</span>`,
+      alcanza ? '<span class="bueno">✓ Alcanza hasta fin de mes</span>' : '<span class="malo">✗ Casi agotados</span>'),
+  ].join('');
   if (!window.Chart) return;
-  const barra = (label, campo, color) => ({ type: 'bar', label, data: c.por_dia.map(p => p[campo]), backgroundColor: color,
-    stack: 'c', borderRadius: 2, maxBarThickness: 18 });
-  const conjuntos = [
-    barra('Búsqueda de momios', 'barrido', k.s1), barra('Foto de cierre', 'cierre', k.s2), barra('Resultados', 'resultados', k.s3),
-    { type: 'line', label: 'Ritmo para el mes', data: c.por_dia.map(() => c.plan_diario), borderColor: k.tenue,
-      borderDash: [6, 4], borderWidth: 2, pointRadius: 0 },
-  ];
+  const barra = (label, campo, color) => ({ type: 'bar', label, data: c.por_dia.map(p => p[campo]), backgroundColor: color, stack: 'c', borderRadius: 3, maxBarThickness: 16 });
+  const conjuntos = [barra('Búsqueda de momios', 'barrido', k.s1), barra('Foto de cierre', 'cierre', k.s2), barra('Resultados', 'resultados', k.s3),
+    { type: 'line', label: 'Ritmo para el mes', data: c.por_dia.map(() => c.plan_diario), borderColor: k.tenue, borderDash: [6, 4], borderWidth: 2, pointRadius: 0 }];
   const opciones = {
-    responsive: true, maintainAspectRatio: false, animation: false,
-    interaction: { mode: 'index', intersect: false },
-    plugins: { legend: { display: false }, tooltip: { callbacks: {
-      label: i => ` ${i.dataset.label}: ${i.dataset.type === 'line' ? i.parsed.y.toFixed(1) : i.parsed.y} créditos` } } },
+    responsive: true, maintainAspectRatio: false, animation: false, interaction: { mode: 'index', intersect: false },
+    plugins: { legend: { display: false }, tooltip: { callbacks: { label: i => ` ${i.dataset.label}: ${i.dataset.type === 'line' ? i.parsed.y.toFixed(1) : i.parsed.y} créditos` } } },
     scales: {
       x: { stacked: true, grid: { display: false }, border: { color: k.reticula }, ticks: { color: k.tenue, maxRotation: 0, autoSkipPadding: 12 } },
       y: { stacked: true, beginAtZero: true, grid: { color: k.reticula }, border: { display: false }, ticks: { color: k.tenue, precision: 0 } },
     },
   };
   const etiquetas = c.por_dia.map(p => dia(p.dia + 'T12:00:00'));
-  if (graficaCreditos) {
-    Object.assign(graficaCreditos.data, { labels: etiquetas, datasets: conjuntos });
-    graficaCreditos.options = opciones; graficaCreditos.update(); return;
-  }
+  if (graficaCreditos) { Object.assign(graficaCreditos.data, { labels: etiquetas, datasets: conjuntos }); graficaCreditos.options = opciones; graficaCreditos.update(); return; }
   graficaCreditos = new Chart($('#creditos'), { data: { labels: etiquetas, datasets: conjuntos }, options: opciones });
+}
+
+function boletos(d) {
+  const lista = d.activas.filter(a => filtro === 'todas' || a.estrategia === filtro);
+  $('#conteo-activas').textContent = d.activas.filter(a => a.estrategia === 'Principal').length || '';
+  $('#activas').innerHTML = lista.length ? lista.map(a => {
+    const enVivo = a.fase === 'en_juego';
+    const estado = a.fase === 'por_empezar' ? `<span>⏳ ${cuenta(a.inicio) || 'Empezando'}</span>`
+      : enVivo ? `<span class="vivo">EN VIVO${a.marcador ? ` · ${esc(a.marcador)}` : ''}</span>` : '<span class="tenue">Esperando resultado</span>';
+    return `<article class="boleto ${enVivo ? 'en-vivo' : ''}">
+      <div class="boleto-cabeza"><span>${emoji(a.deporte)} ${esc(a.liga)}</span>${estado}</div>
+      <div class="equipos">${esc(a.local)} <span class="vs">vs</span> ${esc(a.visitante)}</div>
+      <div class="chica" style="padding:2px 14px 0">${fecha(a.inicio)}${enVivo && a.detalle ? ' · ' + esc(a.detalle) : ''}</div>
+      <div class="eleccion">
+        <div><div class="chica">Apuesta</div><b>${esc(a.seleccion)}</b><div class="chica">${esc(a.casa)} · ${esc(a.estrategia)}</div></div>
+        <div class="momio">${a.momio.toFixed(2)}<small>${americano(a.momio)}</small></div>
+      </div>
+      <div class="boleto-pie">
+        <div>Monto<b>${dinero.format(a.monto)}</b></div>
+        <div>Ganaría<b>${dinero.format(a.potencial)}</b></div>
+        <div>Valor<b>${conSigno(a.valor, spct(a.valor))}</b></div>
+        <div>Mercado<b>${a.movimiento == null ? '<span class="tenue">—</span>' : conSigno(a.movimiento, spct(a.movimiento))}</b></div>
+      </div>
+    </article>`;
+  }).join('') : `<div class="vacio">${filtro === 'Principal'
+      ? 'La Principal no tiene apuestas activas. Es la más exigente: solo apuesta con valor de 2% o más y momios hasta 5.00.<br>Revisa "Todas las estrategias" para ver la actividad del laboratorio.'
+      : 'No hay apuestas activas.'}</div>`;
+}
+
+function historial(d) {
+  const res = { ganada: '<span class="chip bueno">✓ Ganada</span>', perdida: '<span class="chip malo">✗ Perdida</span>', anulada: '<span class="chip">↺ Anulada</span>' };
+  $('#historial').innerHTML = tabla([
+    { t: 'Fecha', v: h => `<span class="chica">${fecha(h.liquidada)}</span>` },
+    { t: 'Partido', v: h => `${emoji(h.deporte)} ${esc(h.partido)}<div class="chica">${esc(h.liga)}</div>` },
+    { t: 'Apuesta', v: h => `${esc(h.seleccion)}<div class="chica">${esc(h.casa)} · ${h.momio.toFixed(2)}</div>` },
+    { t: 'Resultado', v: h => `${res[h.estado]}<div class="chica">${esc(h.marcador || h.nota || '')}</div>` },
+    { t: 'Monto', num: 1, v: h => dinero.format(h.monto) },
+    { t: 'Ganancia', num: 1, v: h => conSigno(h.ganancia, sdinero(h.ganancia)) },
+    { t: 'CLV', num: 1, v: h => conSigno(h.clv, spct(h.clv)) },
+  ], d.historial, 'Todavía no hay apuestas liquidadas.');
+}
+
+function laboratorio(d) {
+  const roles = { principal: 'Principal', retadora: 'Retadora', control: 'Control', retirada: 'Retirada' };
+  const orden = [...d.laboratorio].sort((a, b) => (b.clv ?? -9) - (a.clv ?? -9) || (b.ganancia - a.ganancia));
+  const maximo = Math.max(0.02, ...orden.map(e => Math.abs(e.clv || 0)));
+  const barra = v => {
+    if (v == null) return '<div class="clv-barra"></div>';
+    const ancho = Math.min(50, Math.abs(v) / maximo * 50);
+    return `<div class="clv-barra"><i style="${v >= 0 ? `left:50%;width:${ancho}%;background:var(--bueno)` : `right:50%;width:${ancho}%;background:var(--malo)`}"></i></div>`;
+  };
+  $('#laboratorio').innerHTML = tabla([
+    { t: '#', v: (e) => `<div class="pos">${orden.indexOf(e) + 1}</div>` },
+    { t: 'Estrategia', v: e => `<b>${esc(e.nombre)}</b> <span class="insignia ${e.rol}">${roles[e.rol]}</span><div class="chica">${esc(e.descripcion)}</div>` +
+        ((e.parametros.ligas_bloqueadas || []).length ? `<div class="chica">Evita: ${esc(e.parametros.ligas_bloqueadas.join(', '))}</div>` : '') },
+    { t: 'CLV', num: 1, v: e => `${conSigno(e.clv, spct(e.clv))}<div class="chica">${e.clv_n} medidas</div>${barra(e.clv)}` },
+    { t: 'Apuestas', num: 1, v: e => `${e.apuestas}${e.abiertas ? `<div class="chica">${e.abiertas} activas</div>` : ''}` },
+    { t: 'Rendimiento', num: 1, v: e => conSigno(e.rendimiento, spct(e.rendimiento)) },
+    { t: 'Banca', num: 1, v: e => `<b>${dinero.format(e.banca)}</b><div class="chica">${conSigno(e.ganancia, sdinero(e.ganancia))}</div>` },
+  ], orden, '');
+  $('#calibracion').innerHTML = tabla([
+    { t: 'Probabilidad', v: c => c.tramo }, { t: 'Apuestas', num: 1, v: c => c.n },
+    { t: 'Estimada', num: 1, v: c => pct(c.estimada) }, { t: 'Real', num: 1, v: c => pct(c.real) },
+  ], d.calibracion, 'Aparece cuando haya apuestas liquidadas.');
+}
+
+function bitacora(d) {
+  const iconos = { inicio: '🚀', semana: '📅', ajuste: '🎯', promocion: '🏆', retiro: '⛔', nueva: '🧪', aprendizaje: '🧠', sistema: '⚙️' };
+  $('#bitacora').innerHTML = d.bitacora.map(b => `<li><div class="icono">${iconos[b.tipo] || '•'}</div>
+    <div><div class="chica">${fecha(b.fecha)} · ${esc(b.tipo)}</div><div>${esc(b.mensaje)}</div></div></li>`).join('')
+    || '<li><div></div><div class="vacio">Sin entradas todavía.</div></li>';
+}
+
+function sistema(d) {
+  const s = d.sistema;
+  const min = s.ultimo_ciclo ? (Date.now() - new Date(s.ultimo_ciclo)) / 60000 : Infinity;
+  const enLinea = min < 45;
+  const pill = $('#motor');
+  pill.className = 'pastilla ' + (enLinea ? 'en-linea' : 'detenido');
+  pill.querySelector('.texto').textContent = s.ultimo_ciclo ? `${enLinea ? 'En línea' : 'Sin actualizar'} · ${hace(s.ultimo_ciclo)}` : 'Sin datos';
+  $('#subtitulo').textContent = `Día ${d.dia} de la simulación · banca ficticia, momios reales`;
+  $('#sistema').innerHTML = [
+    `Búsqueda de momios a las ${s.horas_barrido.join(', ')} h (hora de México); marcadores en vivo cada 15 min vía ESPN.`,
+    `Próxima revisión de aprendizaje: ${s.proxima_revision ? fecha(s.proxima_revision) : '—'} · Inicio de la simulación: ${fecha(d.inicio)}`,
+    `Última actualización del bot: ${s.ultimo_ciclo ? fecha(s.ultimo_ciclo) : '—'}`,
+  ].join('<br>');
 }
 
 function pintar() {
   if (!datos) return;
-  kpis(datos); creditos(datos); semanas(datos); activas(datos); deportes(datos); laboratorio(datos);
-  bitacora(datos); calibracion(datos); historial(datos); sistema(datos); dibujarCurva(datos.curva);
+  heroe(datos); kpis(datos); semanas(datos); deportes(datos); creditos(datos); dibujarCurva(datos.curva);
+  boletos(datos); historial(datos); laboratorio(datos); bitacora(datos); sistema(datos);
 }
 
 async function actualizar() {
@@ -429,22 +551,53 @@ async function actualizar() {
   } catch (e) {
     $('#aviso').style.display = 'block';
     $('#aviso').textContent = ESTATICO ? 'No se pudo leer el estado del bot; se reintentará en un minuto.'
-      : 'Sin conexión con el motor. ¿Se cerró la ventana del simulador? Vuelve a abrir iniciar_simulador.bat.';
+      : 'Sin conexión con el motor. Vuelve a abrir iniciar_simulador.bat.';
   }
 }
-if (ESTATICO) $('#buscar').style.display = 'none';
 
+function mostrar(pestana) {
+  document.querySelectorAll('.pestanas button').forEach(b => b.classList.toggle('activa', b.dataset.pestana === pestana));
+  document.querySelectorAll('[data-panel]').forEach(p => p.hidden = p.dataset.panel !== pestana);
+  if (pestana === 'resumen') { grafica?.resize(); graficaCreditos?.resize(); }
+  history.replaceState(null, '', '#' + pestana);
+}
+document.querySelectorAll('.pestanas button').forEach(b => b.addEventListener('click', () => mostrar(b.dataset.pestana)));
+document.querySelectorAll('#filtros button').forEach(b => b.addEventListener('click', () => {
+  filtro = b.dataset.filtro;
+  document.querySelectorAll('#filtros button').forEach(x => x.classList.toggle('activo', x === b));
+  datos && boletos(datos);
+}));
+
+function aplicarTema(tema) {
+  if (tema) document.documentElement.dataset.theme = tema; else delete document.documentElement.dataset.theme;
+  datos && (dibujarCurva(datos.curva), creditos(datos));
+}
+$('#tema').addEventListener('click', () => {
+  const oscuro = getComputedStyle(document.documentElement).colorScheme.includes('dark');
+  const tema = oscuro ? 'light' : 'dark';
+  try { localStorage.setItem('tema', tema); } catch (e) {}
+  aplicarTema(tema);
+});
+try { aplicarTema(localStorage.getItem('tema')); } catch (e) {}
+matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => datos && (dibujarCurva(datos.curva), creditos(datos)));
+
+if (ESTATICO) $('#buscar').hidden = true;
 $('#buscar').addEventListener('click', async () => {
   const b = $('#buscar');
   b.disabled = true; b.textContent = 'Buscando…';
   try { await fetch('/api/buscar', { method: 'POST' }); } catch (e) {}
-  setTimeout(() => { b.disabled = false; b.textContent = 'Buscar momios ahora'; actualizar(); }, 20000);
+  setTimeout(() => { b.disabled = false; b.textContent = 'Buscar momios'; actualizar(); }, 20000);
 });
 
-matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => datos && (dibujarCurva(datos.curva), creditos(datos)));
+const desdeEnlace = () => {
+  const p = location.hash.slice(1);
+  if (['resumen', 'apuestas', 'laboratorio', 'bitacora'].includes(p)) mostrar(p);
+};
+addEventListener('hashchange', desdeEnlace);
+desdeEnlace();
 actualizar();
 setInterval(actualizar, ESTATICO ? 60000 : 15000);
-setInterval(() => datos && activas(datos), 30000);
+setInterval(() => datos && (boletos(datos), sistema(datos)), 30000);
 </script>
 </body>
 </html>

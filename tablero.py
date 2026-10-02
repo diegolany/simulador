@@ -159,7 +159,7 @@ def estado(con, config: dict) -> dict:
 
     # Apuestas activas con el movimiento del mercado desde que se apostó
     activas = []
-    for a in principal:
+    for a in todas:
         if a["estado"] != "abierta":
             continue
         inicio_partido = a_fecha(a["inicio"])
@@ -177,6 +177,7 @@ def estado(con, config: dict) -> dict:
             movimiento = a["momio"] * justas[a["seleccion"]] - 1
             momio_ref_actual = momios[a["seleccion"]]
         activas.append({
+            "estrategia": a["estrategia"], "local": a["local"], "visitante": a["visitante"],
             "partido": f"{a['local']} vs {a['visitante']}", "liga": a["liga"],
             "deporte": nombre_deporte(a["deporte"]), "inicio": a["inicio"], "fase": fase,
             "marcador": (f"{a['marcador_local']}-{a['marcador_visitante']}"
