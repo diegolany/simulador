@@ -8,7 +8,7 @@ from datetime import date, timedelta
 import cerebro
 import riesgo
 from aprendizaje import calibracion_pronosticos, calidad_pronosticos, estadistica, evidencia
-from api import creditos_hoy
+from api import creditos_hoy, dias_restantes as dias_para_repartir
 from base_datos import a_fecha, ahora, iso, leer_estado
 from momios import decimal_a_americano, probabilidades_justas
 
@@ -115,7 +115,7 @@ def _creditos(con, config: dict, inicio, restantes) -> dict:
     for i in range(max(28, (hoy - primero).days + 1)):
         dia = (primero + timedelta(days=i)).isoformat()
         serie.append({"dia": dia, **por_dia.get(dia, vacio)})
-    dias_restantes = monthrange(hoy.year, hoy.month)[1] - hoy.day + 1
+    dias_restantes = dias_para_repartir(con)
     return {
         "total": total, "reserva": reserva, "restantes": restantes,
         "usados": total - restantes if restantes is not None else None,

@@ -15,7 +15,7 @@ from calendar import monthrange
 from datetime import date, datetime, time as hora
 from pathlib import Path
 
-from base_datos import a_fecha, ahora, iso
+from base_datos import a_fecha, ahora, iso, leer_estado
 
 CARPETA = Path(__file__).parent
 URL_BASE = "https://api.the-odds-api.com/v4"
@@ -58,15 +58,26 @@ def proximos_inicios(clave: str, deporte: str) -> list[datetime]:
     return [a_fecha(e["commence_time"]) for e in eventos]
 
 
+def dias_restantes(con) -> int:
+    """Días entre los que se reparten los créditos que quedan: hasta el fin de la simulación si termina antes que
+    el mes (los créditos que sobren después ya no ayudan a cumplir la meta), si no, hasta el fin del mes."""
+    hoy = date.today()
+    fin_mes = monthrange(hoy.year, hoy.month)[1] - hoy.day + 1
+    fin = leer_estado(con, "fin_simulacion")
+    if fin:
+        dias = (date.fromisoformat(fin) - hoy).days + 1
+        if 1 <= dias < fin_mes:
+            return dias
+    return fin_mes
+
+
 def creditos_hoy(con, restantes: int, reserva: int = 0) -> int:
-    """Créditos que todavía se pueden gastar hoy para que el cupo mensual alcance todo el mes
+    """Créditos que todavía se pueden gastar hoy para que el cupo alcance todos los días que quedan
     sin tocar la reserva de emergencia."""
     inicio_dia = iso(datetime.combine(date.today(), hora()).astimezone())
     gastado = con.execute("SELECT COALESCE(SUM(costo), 0) FROM consumo_api WHERE fecha >= ?",
                           (inicio_dia,)).fetchone()[0]
-    hoy = date.today()
-    dias_restantes = monthrange(hoy.year, hoy.month)[1] - hoy.day + 1
-    return max(0, (restantes - reserva + gastado) // dias_restantes - gastado)
+    return max(0, (restantes - reserva + gastado) // dias_restantes(con) - gastado)
 
 
 def registrar_consumo(con, endpoint: str, motivo: str, deporte: str, costo: int, restantes: int) -> int:

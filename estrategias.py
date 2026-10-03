@@ -16,7 +16,7 @@ from statistics import median
 import cerebro
 import marcadores
 import riesgo
-from base_datos import a_fecha, ahora, anotar, iso
+from base_datos import a_fecha, ahora, anotar, iso, leer_estado
 from momios import fraccion_kelly, margen_casa, probabilidades_justas, valor_esperado
 
 PARAMETROS_BASE = {
@@ -38,8 +38,8 @@ INTERCAMBIOS = ("betfair_ex_eu", "matchbook")
 
 ESTRATEGIAS_INICIALES = [
     ("Principal", "valor", "principal",
-     "Valor de 2% o más contra Pinnacle, momios 1.30 a 5.00, hasta 48 h antes",
-     {}),
+     "Valor de 1.5% o más contra Pinnacle, momios 1.30 a 5.00, hasta 48 h antes",
+     {"umbral": 0.015}),
     ("Valor estricto", "valor", "retadora",
      "Solo valor de 4% o más",
      {"umbral": 0.04}),
@@ -64,7 +64,7 @@ ESTRATEGIAS_INICIALES = [
      {"referencia": "consenso"}),
     ("Sin cerebro", "valor", "retadora",
      "Reglas de la Principal con el monto según el valor a simple vista, sin el cerebro: mide si el cerebro ayuda",
-     {"cerebro": False}),
+     {"umbral": 0.015, "cerebro": False}),
     # Experimentos con momios gratuitos de DraftKings: apuestan aunque la diferencia con el precio justo sea
     # mínima, con monto fijo pequeño, para aprender rápido qué forma de apostar ahí deja dinero.
     # Solo informan: nunca cambian las reglas de la Principal.
@@ -106,6 +106,18 @@ def activas(con) -> list[dict]:
     filas = con.execute("SELECT nombre, tipo, rol, descripcion, parametros FROM estrategias WHERE rol != 'retirada'").fetchall()
     return [{"nombre": f["nombre"], "tipo": f["tipo"], "rol": f["rol"], "descripcion": f["descripcion"],
              "p": {**PARAMETROS_BASE, **json.loads(f["parametros"])}} for f in filas]
+
+
+def ajustar_umbral(con, nombres: tuple, umbral: float) -> None:
+    """Cambia el valor mínimo de esas estrategias (y su descripción si lo menciona)."""
+    for nombre in nombres:
+        fila = con.execute("SELECT parametros, descripcion FROM estrategias WHERE nombre = ?", (nombre,)).fetchone()
+        if not fila:
+            continue
+        parametros = {**json.loads(fila["parametros"]), "umbral": umbral}
+        descripcion = (fila["descripcion"] or "").replace("Valor de 2% o más", f"Valor de {umbral:.1%} o más".replace(".0%", "%"))
+        con.execute("UPDATE estrategias SET parametros = ?, descripcion = ? WHERE nombre = ?",
+                    (json.dumps(parametros), descripcion, nombre))
 
 
 def banca(con, estrategia: str, inicial: float) -> tuple[float, float]:
@@ -176,6 +188,9 @@ class _Contexto:
         self.limitadas = riesgo.cuentas_limitadas(con)
         self.descartadas = 0
         self._caidas = {}
+        # Agresividad que eligió el modo objetivo para la cartera Principal (1 = normal)
+        modo = leer_estado(con, "modo_objetivo") or {}
+        self.multiplicador = modo.get("multiplicador", 1.0) if config["objetivo"]["activo"] else 1.0
 
     def caida(self, estrategia: str) -> float:
         if estrategia not in self._caidas:
@@ -186,15 +201,20 @@ class _Contexto:
         return self._caidas[estrategia]
 
 
-def _monto(ctx: _Contexto, est: dict, fraccion: float, casa: str, deporte: str) -> tuple[int, float, list[str]]:
-    """Monto en pesos con los controles de riesgo y de realismo. Devuelve (monto, banca, notas); monto 0 = no apostar."""
+def _monto(ctx: _Contexto, est: dict, fraccion: float, casa: str, deporte: str) -> tuple[int, float, list[str], float]:
+    """Monto en pesos con los controles de riesgo y de realismo. Devuelve (monto, banca, notas, multiplicador);
+    monto 0 = no apostar."""
     config = ctx.config
     r, e = config["riesgo"], config["ejecucion"]
     actual, en_juego = banca(ctx.con, est["nombre"], config["banca_inicial"])
     notas = []
     if est["tipo"] == "favorito":  # el apostador casual no controla su riesgo: solo apuesta lo que tiene libre
         monto = int(fraccion * actual / 10) * 10
-        return (monto if config["apuesta_minima"] <= monto <= actual - en_juego else 0), actual, notas
+        return (monto if config["apuesta_minima"] <= monto <= actual - en_juego else 0), actual, notas, 1.0
+    multiplicador = ctx.multiplicador if est["rol"] == "principal" else 1.0
+    if multiplicador != 1.0:
+        fraccion *= multiplicador
+        notas.append(f"modo objetivo: montos ×{multiplicador:g} (lo que más acerca a la meta sin pasar el límite de riesgo)")
     if est["tipo"] == "valor" and ctx.caida(est["nombre"]) >= r["freno_caida"]:
         fraccion *= r["factor_freno"]
         notas.append(f"freno por caída de {ctx.caida(est['nombre']):.0%} de la banca: monto al {r['factor_freno']:.0%}")
@@ -211,19 +231,20 @@ def _monto(ctx: _Contexto, est: dict, fraccion: float, casa: str, deporte: str) 
         monto = espacio
         notas.append(f"tope de exposición: máximo {r['max_exposicion']:.0%} de la banca en juego")
     monto = int(monto / 10) * 10
-    return (monto if monto >= config["apuesta_minima"] else 0), actual, notas
+    return (monto if monto >= config["apuesta_minima"] else 0), actual, notas, multiplicador
 
 
 def _registrar(con, est: dict, ev, sel: str, casa: str, momio: float, visto: float, momio_ref: float, prob: float,
-               monto: int, colocada: str, razon: str, margen: float, ventaja: float | None, minutos: float) -> None:
+               monto: int, colocada: str, razon: str, margen: float, ventaja: float | None, minutos: float,
+               multiplicador: float = 1.0) -> None:
     con.execute(
         """INSERT INTO apuestas (estrategia, evento_id, deporte, liga, mercado, seleccion, casa, momio, momio_ref,
                                  prob_justa, valor, monto, colocada, inicio, razon, momio_visto, margen_ref,
-                                 ventaja_estimada, minutos_precio)
-           VALUES (?, ?, ?, ?, 'h2h', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                                 ventaja_estimada, minutos_precio, multiplicador)
+           VALUES (?, ?, ?, ?, 'h2h', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         (est["nombre"], ev["id"], ev["deporte"], ev["liga"], sel, casa, momio, momio_ref, prob,
          valor_esperado(prob, momio), monto, colocada, ev["inicio"], razon, visto, round(margen, 4),
-         round(ventaja, 4) if ventaja is not None else None, minutos))
+         round(ventaja, 4) if ventaja is not None else None, minutos, multiplicador))
 
 
 def colocar_apuestas(con, config: dict, capturado: str) -> tuple[dict, int]:
@@ -328,7 +349,7 @@ def colocar_apuestas(con, config: dict, capturado: str) -> tuple[dict, int]:
                 casa, momio, fraccion = "promedio", round(median(precios), 2), p["fijo"]
                 visto, prob = momio, justas[sel]
 
-            monto, actual, notas = _monto(ctx, est, fraccion, casa, ev["deporte"])
+            monto, actual, notas, multiplicador = _monto(ctx, est, fraccion, casa, ev["deporte"])
             if not monto:
                 continue
             if est["tipo"] == "valor":
@@ -338,7 +359,7 @@ def colocar_apuestas(con, config: dict, capturado: str) -> tuple[dict, int]:
                 razon = (f"Control: apuesto al favorito ({prob:.0%}) al momio promedio de {len(precios)} casas "
                          f"({momio:.2f}), sin buscar valor, como lo haría un apostador casual.")
             _registrar(con, est, ev, sel, casa, momio, visto, ref["momios"][sel], prob, monto, capturado, razon,
-                       margen, ventaja, round(minutos, 1))
+                       margen, ventaja, round(minutos, 1), multiplicador)
             ya_apostadas.add((est["nombre"], evento_id))
             colocadas[est["nombre"]] = colocadas.get(est["nombre"], 0) + 1
     con.commit()
@@ -474,7 +495,7 @@ def apostar_gratis(con, config: dict) -> dict:
             momio = ejecutados[sel]
             # Las estrategias de valor usan ¼ de Kelly; los experimentos, un monto fijo pequeño para medir
             fraccion = p.get("fijo") or fraccion_kelly(min(0.99, (1 + estimada) / momio), momio, p["kelly"], p["tope"])
-            monto, actual, notas = _monto(ctx, est, fraccion, casa, ev["deporte"])
+            monto, actual, notas, multiplicador = _monto(ctx, est, fraccion, casa, ev["deporte"])
             if not monto:
                 continue
             colocada = iso(momento)
@@ -490,7 +511,7 @@ def apostar_gratis(con, config: dict) -> dict:
                                  + (f" Experimento: {est['descripcion']}." if est["tipo"] == "gratis" else ""),
                                  fijo=bool(p.get("fijo")), referencia=nombre_ref)
             _registrar(con, est, ev, sel, casa, momio, round(precios[sel], 3), ref[sel], probs[sel], monto, colocada,
-                       razon, margen, estimada if usa_cerebro else None, 0.0)
+                       razon, margen, estimada if usa_cerebro else None, 0.0, multiplicador)
             ya_apostadas.add((est["nombre"], ev["id"]))
             colocadas[est["nombre"]] = colocadas.get(est["nombre"], 0) + 1
     con.commit()

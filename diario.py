@@ -72,7 +72,7 @@ def escribir(con, config: dict, dia: date | None = None) -> None:
         m = revision["mejor"]
         trabajo.append(f"En mi última revisión gratuita comparé {revision['comparados']} partidos: el mejor precio de "
                        f"DraftKings fue {m['partido']} ({m['seleccion']}) a {m['momio']:.2f} contra un precio justo de "
-                       f"{m['justo']:.2f} ({m['valor']:+.1%}). Solo apuesto desde +2%.")
+                       f"{m['justo']:.2f} ({m['valor']:+.1%}). La Principal apuesta desde +1.5%.")
     secciones.append({"titulo": "Cómo trabajé", "parrafos": trabajo})
 
     hechas = con.execute("""SELECT a.casa, e.local, e.visitante, a.seleccion, a.momio, a.razon
@@ -214,6 +214,8 @@ def _riesgo(con, config: dict) -> list[str]:
                       f"mi ventaja estimada ({pr['ventaja']:+.2%}): probabilidad de cumplir la meta de "
                       f"{len(config['objetivos_semana'])} semanas {pr['prob_meta']:.0%}, de terminar en pérdida "
                       f"{pr['prob_perdida']:.0%}; lo más probable es terminar con ${pr['mediana']:,.0f}.")
+    if datos.get("objetivo") and datos["objetivo"].get("razon"):
+        textos.append("Modo objetivo: " + datos["objetivo"]["razon"])
     mente = cerebro.Cerebro(con, config)
     textos.append(f"Mi cerebro: de cada 1% de valor que veo, el cierre confirma {mente.factor:.2f}%, así que apuesto con "
                   f"la ventaja que estimo, no con la que veo a simple vista.")

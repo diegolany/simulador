@@ -15,7 +15,6 @@ import threading
 import traceback
 import urllib.error
 import webbrowser
-from calendar import monthrange
 from datetime import date, datetime, timedelta
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -28,7 +27,7 @@ import marcadores
 import riesgo
 import tablero
 from api import (CARPETA, ErrorAPI, cargar_config, creditos_hoy, deportes_activos, descargar_momios,
-                 descargar_resultados, proximos_inicios)
+                 descargar_resultados, dias_restantes, proximos_inicios)
 from base_datos import a_fecha, ahora, anotar, conectar, guardar_estado, iso, leer_estado, podar
 
 PUERTO = 8765
@@ -57,6 +56,14 @@ def inicializar(con, config: dict) -> None:
         guardar_estado(con, "ultima_revision", iso(ahora()))
         anotar(con, "inicio", f"Arranca la simulación con banca ficticia de "
                               f"${config['banca_inicial']:,.0f} {config['moneda']}.")
+    fin = a_fecha(leer_estado(con, "fecha_inicio")) + timedelta(days=7 * len(config["objetivos_semana"]))
+    guardar_estado(con, "fin_simulacion", fin.astimezone().date().isoformat())  # hasta ahí se reparten los créditos
+    if not leer_estado(con, "modo_objetivo_inicio"):  # una vez: la Principal busca la meta con más volumen
+        estrategias.ajustar_umbral(con, ("Principal", "Sin cerebro"), 0.015)
+        anotar(con, "ajuste", "Modo objetivo: la Principal baja su valor mínimo de 2% a 1.5% para tener más apuestas con "
+                              "ventaja (en 18,700 partidos históricos sigue ganando: +4.9%, t = 2.7, con 27% más apuestas). "
+                              "El cerebro apuesta menos en las de menor ventaja.")
+        guardar_estado(con, "modo_objetivo_inicio", iso(ahora()))
     con.commit()
 
 
@@ -155,9 +162,7 @@ def decidir_descargas(con, config: dict, activos: dict, cal: dict, restantes: in
     y se gasta cuando aparece una liga con partidos próximos, momios viejos y buen historial."""
     d = config["decision"]
     momento = ahora()
-    hoy = date.today()
-    dias_restantes = monthrange(hoy.year, hoy.month)[1] - hoy.day + 1
-    por_hora = max(0.0, (restantes - config["reserva_creditos"]) / dias_restantes * d["porcion_busqueda"] / 24)
+    por_hora = max(0.0, (restantes - config["reserva_creditos"]) / dias_restantes(con) * d["porcion_busqueda"] / 24)
     ahorro = leer_estado(con, "ahorro", d["capacidad_ahorro"] / 2)
     ultima = leer_estado(con, "ahorro_actualizado")
     if ultima:
@@ -236,6 +241,7 @@ def ciclo(con, config: dict, forzar_barrido: bool = False) -> None:
     if liquidadas:
         log(f"Se liquidaron {liquidadas} apuestas")
     estrategias.calcular_clv(con, config)
+    _seguro("Modo objetivo", riesgo.modo_objetivo, con, config)  # qué tan agresivo apostar en este ciclo
 
     for deporte in ligas_para_cierre(con, config):
         if creditos_hoy(con, restantes, config["reserva_creditos"]) < 1:
@@ -296,7 +302,7 @@ def apuestas_gratuitas(con, config: dict, manual: bool = False) -> None:
         else:
             texto = (f"comparé {resumen['comparados']} partidos de DraftKings contra el precio justo de Pinnacle. "
                      + (f"El mejor fue {m['partido']} ({m['seleccion']}): DraftKings paga {m['momio']:.2f} y el precio "
-                        f"justo es {m['justo']:.2f}, valor {m['valor']:+.1%} (se necesita +2%). " if m else "")
+                        f"justo es {m['justo']:.2f}, valor {m['valor']:+.1%} (la Principal necesita +1.5%). " if m else "")
                      + (f"Apuestas nuevas: " + ", ".join(f"{n} {e}" for e, n in colocadas.items()) + "."
                         if colocadas else "Ninguno cumplió las reglas, así que no aposté."))
         anotar(con, "sistema", "Búsqueda gratis: " + texto)
@@ -307,6 +313,7 @@ def analizar_sin_gastar(con, config: dict) -> None:
     _seguro("Marcadores ESPN", marcadores.actualizar, con)
     estrategias.liquidar(con)
     estrategias.calcular_clv(con, config)
+    _seguro("Modo objetivo", riesgo.modo_objetivo, con, config)
     capturas, nuevas = estrategias.reanalizar(con, config, config["minutos_reanalisis"])
     log(f"Análisis sin gastar: {capturas} descargas revisadas, {nuevas} apuestas nuevas")
     _seguro("Búsqueda gratuita", apuestas_gratuitas, con, config, manual=True)

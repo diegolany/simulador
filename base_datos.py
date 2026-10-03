@@ -90,6 +90,7 @@ CREATE TABLE IF NOT EXISTS apuestas (
     margen_ref REAL,                -- margen de Pinnacle en ese partido (qué tan eficiente es el mercado)
     ventaja_estimada REAL,          -- ventaja real que estimó el cerebro al apostar
     minutos_precio REAL,            -- minutos entre que se vio el precio y se apostó
+    multiplicador REAL,             -- agresividad del modo objetivo al apostar (1 = normal)
     cierre_revisado INTEGER NOT NULL DEFAULT 0,
     UNIQUE (estrategia, evento_id)
 );
@@ -149,7 +150,8 @@ def conectar() -> sqlite3.Connection:
     con.executescript(ESQUEMA)
     nuevas = (("eventos", "detalle", "TEXT"), ("apuestas", "clv_fuente", "TEXT"), ("apuestas", "razon", "TEXT"),
               ("apuestas", "momio_visto", "REAL"), ("apuestas", "margen_ref", "REAL"),
-              ("apuestas", "ventaja_estimada", "REAL"), ("apuestas", "minutos_precio", "REAL"))
+              ("apuestas", "ventaja_estimada", "REAL"), ("apuestas", "minutos_precio", "REAL"),
+              ("apuestas", "multiplicador", "REAL"))
     for tabla, columna, tipo in nuevas:  # bases creadas antes de esas columnas
         if columna not in {c[1] for c in con.execute(f"PRAGMA table_info({tabla})")}:
             con.execute(f"ALTER TABLE {tabla} ADD COLUMN {columna} {tipo}")

@@ -238,18 +238,21 @@ def _poisson(rng: random.Random, lam: float) -> int:
 
 
 def proyeccion(apuestas: list[dict], respaldo: list[dict], inicial: float, inicio, momento, objetivos: list[float],
-               post: dict | None, pico: float, simulaciones: int = 2000) -> dict | None:
+               post: dict | None, pico: float, simulaciones: int = 2000, escala: float = 1.0) -> dict | None:
     """Simula miles de futuros de la banca hasta el final del periodo con el ritmo de apuestas, los momios y los
-    montos de la cartera, y la ventaja estimada (con su incertidumbre). Devuelve percentiles por día y las
-    probabilidades de cumplir cada objetivo, terminar en pérdida o sufrir caídas fuertes."""
+    montos de la cartera, y la ventaja estimada (con su incertidumbre). `escala` multiplica los montos de las
+    apuestas futuras (la agresividad del modo objetivo). Devuelve percentiles por día y las probabilidades de
+    cumplir cada objetivo, terminar en pérdida o sufrir caídas fuertes."""
     validas = [a for a in apuestas if a["estado"] != "anulada"]
     dias_total = 7 * len(objetivos)
     transcurrido = max(0.0, (momento - inicio).total_seconds() / 86400)
     if transcurrido >= dias_total:
         return None
-    muestra = [(a["momio"], a["monto"] / inicial) for a in validas]
+    # Fracción de la banca de cada apuesta sin la agresividad con la que se hizo; luego se aplica `escala`
+    fraccion = lambda a: a["monto"] / inicial / (a.get("multiplicador") or 1.0) * escala
+    muestra = [(a["momio"], fraccion(a)) for a in validas]
     if len(muestra) < 8:  # pocas apuestas propias: se completa con las del resto del laboratorio
-        muestra += [(a["momio"], a["monto"] / inicial) for a in respaldo[:200]]
+        muestra += [(a["momio"], fraccion(a)) for a in respaldo[:200]]
     if not muestra:
         return None
     ritmo = max(0.5, len(validas) / max(1.0, transcurrido))
@@ -303,7 +306,7 @@ def proyeccion(apuestas: list[dict], respaldo: list[dict], inicial: float, inici
         "prob_caida_10": caida_10 / simulaciones, "prob_caida_20": caida_20 / simulaciones,
         "mediana": _percentil(finales, 0.5), "rango": [_percentil(finales, 0.05), _percentil(finales, 0.95)],
         "ventaja": ventaja, "incertidumbre": incertidumbre, "ritmo": ritmo, "simulaciones": simulaciones,
-        "muestra": len(muestra), "propias": len(validas),
+        "muestra": len(muestra), "propias": len(validas), "escala": escala,
     }
 
 
@@ -312,7 +315,8 @@ def proyeccion(apuestas: list[dict], respaldo: list[dict], inicial: float, inici
 _memoria = {}
 
 CAMPOS = """a.estrategia, a.evento_id, a.seleccion, a.casa, a.momio, a.monto, a.estado, a.ganancia, a.liquidada,
-            a.colocada, a.inicio, a.liga, a.deporte, a.prob_justa, a.prob_cierre, a.clv, a.valor"""
+            a.colocada, a.inicio, a.liga, a.deporte, a.prob_justa, a.prob_cierre, a.clv, a.valor, a.multiplicador"""
+MULTIPLICADORES = (0.5, 0.75, 1.0, 1.25, 1.5)
 
 
 def grupos_clv(con) -> dict[str, list[float]]:
@@ -334,36 +338,115 @@ def posteriores_laboratorio(con) -> dict[str, dict]:
     return resultado
 
 
+def _datos(con, config: dict) -> dict:
+    """Lo que necesitan el panel y el modo objetivo: apuestas de la Principal, respaldo del laboratorio y su ventaja."""
+    momento = ahora()
+    inicial = config["banca_inicial"]
+    texto_inicio = leer_estado(con, "fecha_inicio")
+    todas = [dict(r) for r in con.execute(f"SELECT {CAMPOS} FROM apuestas a ORDER BY a.colocada")]
+    tipos = {r[0]: r[1] for r in con.execute("SELECT nombre, tipo FROM estrategias")}
+    principal = [a for a in todas if a["estrategia"] == "Principal"]
+    return {"momento": momento, "inicial": inicial, "inicio": a_fecha(texto_inicio) if texto_inicio else momento,
+            "todas": todas, "tipos": tipos, "principal": principal, "post": posteriores_laboratorio(con).get("Principal"),
+            "caidas": caidas(principal, inicial),
+            "respaldo": [a for a in todas if tipos.get(a["estrategia"]) == "valor" and a["estrategia"] != "Principal"
+                         and a["estado"] != "anulada"]}
+
+
+def _proyectar(d: dict, config: dict, simulaciones: int, escala: float) -> dict | None:
+    return proyeccion(d["principal"], d["respaldo"], d["inicial"], d["inicio"], d["momento"], config["objetivos_semana"],
+                      d["post"], d["caidas"]["pico"], simulaciones, escala)
+
+
+def modo_objetivo(con, config: dict) -> dict:
+    """La mentalidad de meta: en cada ciclo simula la cartera con distintas agresividades (montos ×0.5 a ×1.5) y elige
+    la que da más probabilidad de cumplir la meta sin pasar el límite de riesgo (probabilidad de caer 20% o más).
+    Solo sube de ×1 si es probable que la ventaja sea real: apostar más sin ventaja solo agrega riesgo.
+    Si va adelante de la meta, la misma cuenta lo lleva a bajar el riesgo para cuidarla."""
+    o = config["objetivo"]
+    anterior = leer_estado(con, "modo_objetivo") or {}
+    actual = anterior.get("multiplicador", 1.0)
+    if not o["activo"]:
+        resultado = {"multiplicador": 1.0, "opciones": [], "razon": "Modo objetivo apagado: montos normales."}
+        guardar_estado(con, "modo_objetivo", resultado)
+        return resultado
+    d = _datos(con, config)
+    opciones = []
+    for m in MULTIPLICADORES:
+        if not o["minimo"] <= m <= o["maximo"]:
+            continue
+        p = _proyectar(d, config, o["simulaciones"], m)
+        if p is None:
+            resultado = {"multiplicador": 1.0, "opciones": [], "razon": "El periodo terminó o aún no hay apuestas para simular."}
+            guardar_estado(con, "modo_objetivo", resultado)
+            return resultado
+        opciones.append({"multiplicador": m, "prob_meta": p["prob_meta"], "prob_perdida": p["prob_perdida"],
+                         "prob_caida_20": p["prob_caida_20"], "mediana": p["mediana"]})
+    p_ventaja = d["post"]["p_ventaja"] if d["post"] else 0.5
+    for x in opciones:
+        x["permitida"] = x["prob_caida_20"] <= o["max_caida_20"] and (x["multiplicador"] <= 1.0
+                                                                     or p_ventaja >= o["prob_ventaja_para_subir"])
+    permitidas = [x for x in opciones if x["permitida"]]
+    if not permitidas:
+        elegida = opciones[0]  # todas pasan el límite: lo más prudente
+    else:
+        mejor = max(x["prob_meta"] for x in permitidas)
+        # Entre las que dan casi lo mismo (1 punto), la de menos riesgo; y no se cambia por diferencias de ruido
+        elegida = min((x for x in permitidas if x["prob_meta"] >= mejor - 0.01), key=lambda x: x["multiplicador"])
+        sigue = next((x for x in permitidas if x["multiplicador"] == actual), None)
+        if sigue and sigue["prob_meta"] >= elegida["prob_meta"] - 0.015:
+            elegida = sigue
+    normal = next((x for x in opciones if x["multiplicador"] == 1.0), elegida)
+    m = elegida["multiplicador"]
+    if m > 1:
+        razon = (f"Subo los montos ×{m:g}: la ventaja parece real ({p_ventaja:.0%} de probabilidad) y así la probabilidad "
+                 f"de cumplir la meta pasa de {normal['prob_meta']:.0%} a {elegida['prob_meta']:.0%}, con riesgo de caer "
+                 f"20% de {elegida['prob_caida_20']:.0%} (límite {o['max_caida_20']:.0%}).")
+    elif m < 1 and not normal.get("permitida", True):
+        razon = (f"Bajo los montos ×{m:g}: con montos normales el riesgo de caer 20% sería {normal['prob_caida_20']:.0%}, "
+                 f"arriba del límite de {o['max_caida_20']:.0%}. Así la probabilidad de cumplir la meta es "
+                 f"{elegida['prob_meta']:.0%} (con montos normales, {normal['prob_meta']:.0%}) con riesgo de "
+                 f"{elegida['prob_caida_20']:.0%}. Cuido la banca para seguir en carrera.")
+    elif m < 1:
+        razon = (f"Bajo los montos ×{m:g}: apostar más no acerca la meta lo suficiente ({normal['prob_meta']:.0%} con montos "
+                 f"normales contra {elegida['prob_meta']:.0%}) y sí sube el riesgo de caer 20% ({normal['prob_caida_20']:.0%} "
+                 f"contra {elegida['prob_caida_20']:.0%}). Cuido la banca para seguir en carrera.")
+    else:
+        razon = (f"Mantengo los montos normales: es lo que da más probabilidad de cumplir la meta "
+                 f"({elegida['prob_meta']:.0%}) sin pasar el límite de riesgo.")
+    if p_ventaja < o["prob_ventaja_para_subir"] and any(x["multiplicador"] > 1 for x in opciones):
+        razon += (f" No subo más porque la probabilidad de que la ventaja sea real ({p_ventaja:.0%}) todavía no llega a "
+                  f"{o['prob_ventaja_para_subir']:.0%}: sin ventaja, apostar más solo es arriesgar más.")
+    resultado = {"multiplicador": m, "prob_meta": elegida["prob_meta"], "opciones": opciones, "razon": razon,
+                 "p_ventaja": p_ventaja, "max_caida_20": o["max_caida_20"]}
+    if m != actual:
+        anotar(con, "riesgo", f"Modo objetivo: montos de ×{actual:g} a ×{m:g}. {razon}")
+    guardar_estado(con, "modo_objetivo", resultado)
+    con.commit()
+    return resultado
+
+
 def panel(con, config: dict) -> dict:
     """Todas las medidas de riesgo y confianza de la cartera Principal (se calcula una vez por ciclo)."""
     huella = tuple(con.execute("SELECT COUNT(*), MAX(liquidada), MAX(colocada), COALESCE(SUM(ganancia), 0) "
                                "FROM apuestas").fetchone())
-    momento = ahora()
-    clave = (huella, momento.strftime("%Y%m%d%H"))
+    objetivo = leer_estado(con, "modo_objetivo") or {}
+    escala = objetivo.get("multiplicador", 1.0) if config["objetivo"]["activo"] else 1.0
+    clave = (huella, escala, ahora().strftime("%Y%m%d%H"))
     if clave in _memoria:
         return _memoria[clave]
-    inicial = config["banca_inicial"]
-    texto_inicio = leer_estado(con, "fecha_inicio")
-    inicio = a_fecha(texto_inicio) if texto_inicio else momento
-    todas = [dict(r) for r in con.execute(f"SELECT {CAMPOS} FROM apuestas a ORDER BY a.colocada")]
-    principal = [a for a in todas if a["estrategia"] == "Principal"]
-    posts = posteriores_laboratorio(con)
-    post = posts.get("Principal")
+    d = _datos(con, config)
+    principal, inicial, c = d["principal"], d["inicial"], d["caidas"]
     banca = inicial + sum(a["ganancia"] or 0 for a in principal if a["estado"] != "abierta")
-    c = caidas(principal, inicial)
-    tipos = {r[0]: r[1] for r in con.execute("SELECT nombre, tipo FROM estrategias")}
-    respaldo = [a for a in todas if tipos.get(a["estrategia"]) == "valor" and a["estrategia"] != "Principal"
-                and a["estado"] != "anulada"]
-    valor_y_gratis = [a for a in todas if tipos.get(a["estrategia"]) in ("valor", "gratis")]
     resultado = {
         "caidas": c,
         "suerte": suerte(principal),
         "exposicion": exposicion([a for a in principal if a["estado"] == "abierta"], banca),
-        "confianza": confianza([a["clv"] for a in principal if a["clv"] is not None and a["estado"] != "anulada"], post,
-                               [a["momio"] for a in principal if a["estado"] in ("ganada", "perdida")]),
-        "proyeccion": proyeccion(principal, respaldo, inicial, inicio, momento, config["objetivos_semana"], post,
-                                 c["pico"], config["riesgo"]["simulaciones"]),
-        "cuentas": cuentas(valor_y_gratis),
+        "confianza": confianza([a["clv"] for a in principal if a["clv"] is not None and a["estado"] != "anulada"],
+                               d["post"], [a["momio"] for a in principal if a["estado"] in ("ganada", "perdida")]),
+        "proyeccion": _proyectar(d, config, config["riesgo"]["simulaciones"], escala),
+        "objetivo": objetivo or None,
+        "cuentas": cuentas([a for a in d["todas"] if d["tipos"].get(a["estrategia"]) in ("valor", "gratis")]),
         "freno": {"activo": c["actual_pct"] >= config["riesgo"]["freno_caida"], "umbral": config["riesgo"]["freno_caida"],
                   "factor": config["riesgo"]["factor_freno"]},
         "max_exposicion": config["riesgo"]["max_exposicion"],

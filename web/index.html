@@ -303,6 +303,9 @@ footer { margin-top: 28px; color: var(--tenue); font-size: 12.5px; line-height: 
         calcula sin gastar créditos.</p>
     </div>
 
+    <h3 class="seccion">Modo objetivo: cómo busca la meta</h3>
+    <div class="tarjeta" id="objetivo"></div>
+
     <h3 class="seccion">¿La ventaja es real?</h3>
     <div class="tarjeta" id="confianza"></div>
 
@@ -455,7 +458,9 @@ function kpis(d) {
     kpi('🔬', aRiesgo('Ventaja real'), cf.p_ventaja == null ? '—' : pct(cf.p_ventaja, 0), cf.p_ventaja == null
       ? 'aparece con el CLV medido' : `probabilidad de que no sea suerte · ${probChip(cf.p_ventaja)}`),
     kpi('🎲', aRiesgo('Prob. de cumplir la meta'), pr ? pct(pr.prob_meta, 0) : '—',
-      pr ? `según ${pr.simulaciones.toLocaleString('es-MX')} futuros simulados` : 'aparece con las primeras apuestas'),
+      pr ? `según ${pr.simulaciones.toLocaleString('es-MX')} futuros simulados` +
+        (rg.objetivo?.multiplicador != null ? ` · modo objetivo: montos ×${rg.objetivo.multiplicador.toFixed(2)}` : '')
+        : 'aparece con las primeras apuestas'),
     kpi('🧯', aRiesgo('Caída máxima'), cd && cd.n ? `<span class="${cd.maxima_pct > 0 ? 'malo' : ''}">${spct(-cd.maxima_pct)}</span>` : '—',
       cd && cd.n ? `desde el punto más alto · peor racha ${cd.peor_racha}` : 'sin apuestas terminadas'),
     kpi('🎯', 'Acierto', pct(r.acierto), `${r.ganadas} de ${r.liquidadas} liquidadas`),
@@ -473,7 +478,40 @@ const puntos = v => v == null ? '—' : `${v > 0 ? '+' : v < 0 ? '−' : ''}${Ma
 function riesgoVista(d) {
   const r = d.riesgo;
   if (!r) { $('#confianza').innerHTML = '<div class="vacio">Todavía no hay datos de riesgo.</div>'; return; }
-  confianzaVista(d); proyeccionVista(d); riesgoKpis(r); cerebroVista(d); exposicionVista(r); cuentasVista(r);
+  objetivoVista(d); confianzaVista(d); proyeccionVista(d); riesgoKpis(r); cerebroVista(d); exposicionVista(r); cuentasVista(r);
+}
+
+function objetivoVista(d) {
+  const o = d.riesgo.objetivo;
+  if (!o || !o.opciones || !o.opciones.length) {
+    $('#objetivo').innerHTML = `<div class="vacio">${esc(o?.razon || 'El modo objetivo se calcula en la siguiente vuelta del bot.')}</div>`;
+    return;
+  }
+  const m = o.multiplicador;
+  $('#objetivo').innerHTML = `
+    <div class="heroe-cabeza">
+      <div style="min-width:0;flex:1 1 380px">
+        <div class="etiqueta">Agresividad elegida para la Principal</div>
+        <div class="cifra">×${m.toFixed(2)}</div>
+        <span class="chip ${m > 1 ? 'azul' : m < 1 ? 'malo' : ''}">${m > 1 ? '▲ Montos más altos' : m < 1 ? '▼ Montos más bajos' : '● Montos normales'}</span>
+        <p style="margin:10px 0 0">${esc(o.razon)}</p>
+      </div>
+      <div class="meta">
+        <div class="etiqueta">Probabilidad de cumplir la meta</div>
+        <div style="font-size:20px;font-weight:700;margin-top:2px">${pct(o.prob_meta, 0)}</div>
+        <div class="chica">Cada vuelta simula montos de ×0.5 a ×1.5 y elige el que más acerca la meta con riesgo de caer 20%
+          menor a ${pct(o.max_caida_20, 0)}. Solo sube de ×1 si la ventaja parece real.</div>
+      </div>
+    </div>
+    <div class="tabla" style="margin-top:14px">${tabla([
+      { t: 'Montos', v: x => `<b>×${x.multiplicador.toFixed(2)}</b>` },
+      { t: 'Cumplir la meta', num: 1, v: x => pct(x.prob_meta, 0) },
+      { t: 'Terminar en pérdida', num: 1, v: x => pct(x.prob_perdida, 0) },
+      { t: 'Caer 20% o más', num: 1, v: x => `<span class="${x.prob_caida_20 > o.max_caida_20 ? 'malo' : ''}">${pct(x.prob_caida_20, 0)}</span>` },
+      { t: 'Banca más probable', num: 1, v: x => dinero.format(x.mediana) },
+      { t: '', num: 1, v: x => x.multiplicador === m ? '<span class="chip bueno">✓ Elegida</span>'
+          : !x.permitida ? `<span class="chip malo">${x.prob_caida_20 > o.max_caida_20 ? 'Demasiado riesgo' : 'Falta ventaja comprobada'}</span>` : '' },
+    ], o.opciones, '')}</div>`;
 }
 
 function confianzaVista(d) {
@@ -788,7 +826,7 @@ function boletos(d) {
       </div>
     </article>`;
   }).join('') : `<div class="vacio">${filtro === 'Principal'
-      ? 'La Principal no tiene apuestas activas. Es la más exigente: solo apuesta con valor de 2% o más y momios hasta 5.00.<br>Revisa "Todas las estrategias" para ver la actividad del laboratorio.'
+      ? 'La Principal no tiene apuestas activas. Solo apuesta con valor de 1.5% o más (ya descontado el movimiento del precio) y momios de 1.30 a 5.00.<br>Revisa "Todas las estrategias" para ver la actividad del laboratorio.'
       : 'No hay apuestas activas.'}</div>`;
 }
 

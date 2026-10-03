@@ -7,7 +7,7 @@
   "banca_inicial": 100000,
   "moneda": "MXN",
   "creditos_mes": 500,
-  "reserva_creditos": 25,
+  "reserva_creditos": 15,
   "apuesta_minima": 50,
   "max_minutos_momio": 30,
   "valor_sospechoso": 0.15,
@@ -20,7 +20,7 @@
   "decision": {
     "horas_calendario": 3,
     "capacidad_ahorro": 6,
-    "porcion_busqueda": 0.75,
+    "porcion_busqueda": 0.95,
     "puntaje_minimo": 0.5,
     "prestamo_manual": 3
   },
@@ -47,6 +47,14 @@
     "factor_freno": 0.5,
     "simulaciones": 2000
   },
+  "objetivo": {
+    "activo": true,
+    "max_caida_20": 0.10,
+    "minimo": 0.5,
+    "maximo": 1.5,
+    "prob_ventaja_para_subir": 0.6,
+    "simulaciones": 800
+  },
   "cerebro": {
     "factor_previo": 0.5,
     "factor_previo_max": 0.8,
@@ -68,7 +76,7 @@
     "mma": 6
   },
   "aprendizaje": {
-    "dias_entre_revisiones": 7,
+    "dias_entre_revisiones": 3,
     "min_apuestas_clv_promocion": 40,
     "min_apuestas_clv_retiro": 80,
     "min_apuestas_filtro": 30,

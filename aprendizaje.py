@@ -5,7 +5,7 @@ la ganancia tarda cientos de apuestas en dejar de ser suerte, el CLV no.
 
 1. Prioridad de ligas (cada barrido): gasta los créditos donde más valor ha
    encontrado, sin dejar de explorar ligas poco revisadas.
-2. Revisión semanal:
+2. Revisión cada pocos días (dias_entre_revisiones):
    - Filtros: la Principal deja de apostar en ligas o casas con CLV negativo
      comprobado, y regresa si los experimentos muestran que mejoraron.
    - Promoción: si una retadora le gana claramente a la Principal, sus reglas
@@ -252,24 +252,26 @@ def mutar(base: dict, existentes: list[dict], rng: random.Random) -> tuple[dict,
 def revision(con, config: dict) -> None:
     ap = config["aprendizaje"]
     inicio = a_fecha(leer_estado(con, "fecha_inicio"))
-    semana = (ahora() - inicio).days // 7 + 1
+    dia = (ahora() - inicio).days + 1
+    semana = (dia - 1) // 7 + 1
     inicial = config["banca_inicial"]
     principal = _leer(con, "Principal")
 
-    # Resumen de la semana para la bitácora
-    hace_7 = iso(ahora() - timedelta(days=7))
+    # Resumen desde la revisión anterior para la bitácora
+    dias = ap["dias_entre_revisiones"]
+    desde = iso(ahora() - timedelta(days=dias))
     n_sem, ganancia_sem, apostado_sem = con.execute(
         """SELECT COUNT(*), COALESCE(SUM(ganancia), 0),
                   COALESCE(SUM(CASE WHEN estado IN ('ganada', 'perdida') THEN monto END), 0)
            FROM apuestas WHERE estrategia = 'Principal' AND estado != 'abierta' AND liquidada >= ?""",
-        (hace_7,)).fetchone()
+        (desde,)).fetchone()
     ganancia_total = con.execute("""SELECT COALESCE(SUM(ganancia), 0) FROM apuestas
                                     WHERE estrategia = 'Principal' AND estado != 'abierta'""").fetchone()[0]
     clv_p = [v for vals in _clv_por(con, "estrategia", "Principal").values() for v in vals]
     n_p, m_p, e_p = estadistica(clv_p)
     rendimiento = f"{ganancia_sem / apostado_sem:+.1%}" if apostado_sem else "sin apuestas liquidadas"
     anotar(con, "semana",
-           f"Revisión semana {semana - 1 if semana > 1 else 1}: {n_sem} apuestas liquidadas en 7 días, "
+           f"Revisión del día {dia} (semana {semana}): {n_sem} apuestas liquidadas en los últimos {dias} días, "
            f"ganancia ${ganancia_sem:,.0f} ({rendimiento} sobre lo apostado). "
            f"Acumulado: {ganancia_total / inicial:+.2%} de la banca. CLV de la Principal: "
            + (f"{m_p:+.2%} en {n_p} apuestas." if n_p else "todavía sin medir."))
@@ -312,7 +314,7 @@ def revision(con, config: dict) -> None:
                 candidatas.append((prob, post["media"], post["n"], r))
         if candidatas:
             prob, media, n, mejor = max(candidatas, key=lambda c: c[0])
-            anterior = f"Principal anterior (S{semana})"
+            anterior = f"Principal anterior (día {dia})"
             con.execute("INSERT INTO estrategias (nombre, tipo, rol, descripcion, parametros, creada) "
                         "VALUES (?, 'valor', 'retadora', ?, ?, ?)",
                         (anterior, f"Reglas que tenía la Principal hasta la semana {semana}: "
@@ -350,7 +352,9 @@ def revision(con, config: dict) -> None:
     cupo = ap["max_retadoras"] - con.execute("SELECT COUNT(*) FROM estrategias WHERE rol = 'retadora'").fetchone()[0]
     for letra in "ABCDEFGH"[:max(0, cupo)]:
         parametros, cambios = mutar(principal["p"], activas, rng)
-        nombre = f"Variante S{semana}-{letra}"
+        nombre = f"Variante D{dia}-{letra}"
+        if con.execute("SELECT 1 FROM estrategias WHERE nombre = ?", (nombre,)).fetchone():
+            continue  # ya hubo una revisión este mismo día
         con.execute("INSERT INTO estrategias (nombre, tipo, rol, descripcion, parametros, creada) "
                     "VALUES (?, 'valor', 'retadora', ?, ?, ?)",
                     (nombre, f"Principal con {cambios}", json.dumps(parametros), iso(ahora())))
