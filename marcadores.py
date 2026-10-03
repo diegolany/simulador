@@ -74,11 +74,15 @@ def cubierto_momios(deporte: str) -> bool:
 def _momios_espn(ev: dict) -> dict | None:
     """Momio actual (o de cierre, si ya empezó) que ESPN publica para local, visitante y empate."""
     for o in ev.get("competitions", [{}])[0].get("odds") or []:
-        linea = o.get("moneyline") or {}
+        if not isinstance(o, dict):
+            continue  # ESPN a veces manda entradas vacías (partidos en vivo o terminados)
+        linea = o.get("moneyline") if isinstance(o.get("moneyline"), dict) else {}
         precios, apertura = {}, {}
         for lado in ("home", "away", "draw"):
             for momento, destino in (("close", precios), ("open", apertura)):
-                valor = ((linea.get(lado) or {}).get(momento) or {}).get("odds")
+                lado_datos = linea.get(lado) if isinstance(linea.get(lado), dict) else {}
+                datos_momento = lado_datos.get(momento) if isinstance(lado_datos.get(momento), dict) else {}
+                valor = datos_momento.get("odds")
                 try:
                     if valor:
                         destino[lado] = americano_a_decimal(100.0 if valor == "EVEN" else float(valor))

@@ -39,6 +39,16 @@ def log(mensaje: str) -> None:
     print(f"[{datetime.now():%d/%m %H:%M}] {mensaje}", flush=True)
 
 
+def _seguro(descripcion: str, funcion, *args, **kwargs):
+    """Las tareas gratuitas no deben detener el ciclo: si una falla, se registra y se sigue con lo demás."""
+    try:
+        return funcion(*args, **kwargs)
+    except Exception as e:
+        log(f"{descripcion} falló y se omitió en este ciclo: {e!r}")
+        traceback.print_exc()
+        return None
+
+
 def inicializar(con, config: dict) -> None:
     estrategias.sembrar(con)
     if not leer_estado(con, "fecha_inicio"):
@@ -212,7 +222,7 @@ def ciclo(con, config: dict, forzar_barrido: bool = False) -> None:
                        WHERE clv IS NULL AND cierre_revisado = 1 AND estado != 'anulada'""")
         guardar_estado(con, "clv_espn_retroactivo", True)
 
-    vivos, terminados = marcadores.actualizar(con)  # gratis
+    vivos, terminados = _seguro("Marcadores ESPN", marcadores.actualizar, con) or (0, 0)  # gratis
     if vivos or terminados:
         log(f"Marcadores ESPN: {vivos} partidos en juego, {terminados} terminados")
     for deporte in deportes_por_liquidar(con, config):
@@ -243,13 +253,13 @@ def ciclo(con, config: dict, forzar_barrido: bool = False) -> None:
     else:
         restantes -= decidir_descargas(con, config, activos, cal, restantes)
     # Gratis: con los momios ya descargados, apuestas que ahora sí entran en la ventana de alguna estrategia
-    estrategias.reanalizar(con, config, config["minutos_reanalisis"], silencioso=True)
-    apuestas_gratuitas(con, config)
-    marcadores.resolver_pronosticos(con)  # gratis: resultados de todos los partidos pronosticados
+    _seguro("Reanálisis", estrategias.reanalizar, con, config, config["minutos_reanalisis"], silencioso=True)
+    _seguro("Búsqueda gratuita", apuestas_gratuitas, con, config)
+    _seguro("Resultados de pronósticos", marcadores.resolver_pronosticos, con)  # gratis
 
     if aprendizaje.toca_revision(con, config):
         aprendizaje.revision(con, config)
-    aprendizaje.aprendizaje_diario(con)
+    _seguro("Aprendizaje diario", aprendizaje.aprendizaje_diario, con)
     try:  # en tiempos muertos: ponerse al día con datos históricos nuevos (gratis)
         if estudio.estudiar(con, config):
             log("Estudio de datos históricos actualizado")
@@ -260,7 +270,7 @@ def ciclo(con, config: dict, forzar_barrido: bool = False) -> None:
         guardar_estado(con, "ultima_poda", date.today().isoformat())
         podar(con, config["casa_referencia"])
 
-    diario.actualizar(con, config)
+    _seguro("Diario", diario.actualizar, con, config)
     guardar_estado(con, "restantes", restantes)
     guardar_estado(con, "ultimo_ciclo", iso(ahora()))
     con.commit()
@@ -292,14 +302,14 @@ def apuestas_gratuitas(con, config: dict, manual: bool = False) -> None:
 
 def analizar_sin_gastar(con, config: dict) -> None:
     """Marcadores, liquidación, CLV y apuestas nuevas con los momios ya descargados: 0 créditos."""
-    marcadores.actualizar(con)
+    _seguro("Marcadores ESPN", marcadores.actualizar, con)
     estrategias.liquidar(con)
     estrategias.calcular_clv(con, config)
     capturas, nuevas = estrategias.reanalizar(con, config, config["minutos_reanalisis"])
     log(f"Análisis sin gastar: {capturas} descargas revisadas, {nuevas} apuestas nuevas")
-    apuestas_gratuitas(con, config, manual=True)
-    marcadores.resolver_pronosticos(con)
-    diario.actualizar(con, config)
+    _seguro("Búsqueda gratuita", apuestas_gratuitas, con, config, manual=True)
+    _seguro("Resultados de pronósticos", marcadores.resolver_pronosticos, con)
+    _seguro("Diario", diario.actualizar, con, config)
     guardar_estado(con, "ultimo_ciclo", iso(ahora()))
     con.commit()
 
