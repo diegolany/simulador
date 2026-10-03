@@ -34,12 +34,20 @@ def _marca_remota() -> str | None:
 def estudiar(con, config: dict) -> bool:
     """Repite el estudio si hay datos nuevos (máximo cada 2 días) o si pasó el plazo. Devuelve si lo hizo."""
     ultima = leer_estado(con, "estudio_fecha")
-    if ultima and ahora() - a_fecha(ultima) < timedelta(days=2):
+    # Si cambiaron las reglas que se prueban, se repite el estudio aunque no haya datos nuevos
+    reglas_nuevas = (leer_estado(con, "evidencia") or {}).get("version") != backtest_futbol.VERSION
+    if ultima and ahora() - a_fecha(ultima) < timedelta(days=2) and not reglas_nuevas:
         return False
     marca = _marca_remota()
     vencido = not ultima or ahora() - a_fecha(ultima) >= timedelta(days=config["estudio"]["dias_entre_estudios"])
-    if not vencido and (not marca or marca == leer_estado(con, "estudio_marca")):
+    if not vencido and not reglas_nuevas and (not marca or marca == leer_estado(con, "estudio_marca")):
         return False
+
+    intento = leer_estado(con, "estudio_intento")
+    if intento and ahora() - a_fecha(intento) < timedelta(hours=6):
+        return False  # el último intento fue hace poco (si falló la descarga, no se reintenta en cada ciclo)
+    guardar_estado(con, "estudio_intento", iso(ahora()))
+    con.commit()
 
     carpeta = backtest_futbol.CARPETA
     carpeta.mkdir(exist_ok=True)

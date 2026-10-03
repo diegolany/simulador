@@ -25,6 +25,7 @@ import diario
 import estrategias
 import estudio
 import marcadores
+import riesgo
 import tablero
 from api import (CARPETA, ErrorAPI, cargar_config, creditos_hoy, deportes_activos, descargar_momios,
                  descargar_resultados, proximos_inicios)
@@ -259,7 +260,8 @@ def ciclo(con, config: dict, forzar_barrido: bool = False) -> None:
 
     if aprendizaje.toca_revision(con, config):
         aprendizaje.revision(con, config)
-    _seguro("Aprendizaje diario", aprendizaje.aprendizaje_diario, con)
+    _seguro("Aprendizaje diario", aprendizaje.aprendizaje_diario, con, config)
+    _seguro("Alertas de riesgo", riesgo.alertas, con, config)
     try:  # en tiempos muertos: ponerse al día con datos históricos nuevos (gratis)
         if estudio.estudiar(con, config):
             log("Estudio de datos históricos actualizado")
@@ -309,6 +311,7 @@ def analizar_sin_gastar(con, config: dict) -> None:
     log(f"Análisis sin gastar: {capturas} descargas revisadas, {nuevas} apuestas nuevas")
     _seguro("Búsqueda gratuita", apuestas_gratuitas, con, config, manual=True)
     _seguro("Resultados de pronósticos", marcadores.resolver_pronosticos, con)
+    _seguro("Alertas de riesgo", riesgo.alertas, con, config)
     _seguro("Diario", diario.actualizar, con, config)
     guardar_estado(con, "ultimo_ciclo", iso(ahora()))
     con.commit()

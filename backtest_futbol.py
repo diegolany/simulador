@@ -27,6 +27,8 @@ CLAVES = {"E0": "soccer_epl", "SP1": "soccer_spain_la_liga", "D1": "soccer_germa
           "P1": "soccer_portugal_primeira_liga", "MEX": "soccer_mexico_ligamx",
           "ARG": "soccer_argentina_primera_division", "BRA": "soccer_brazil_campeonato", "USA": "soccer_usa_mls"}
 UMBRAL = 0.02
+VERSION = 2  # sube cuando cambian las reglas probadas: el estudio automático se repite al detectar el cambio
+DESLIZAMIENTO = 0.003  # precio que se pierde al apostar (el momio se mueve antes de que entre la apuesta)
 
 
 def _numero(texto):
@@ -73,12 +75,25 @@ def leer(liga: str) -> list[dict]:
     return filas
 
 
+def _si(condicion: bool, momio: float) -> float | None:
+    return momio if condicion else None
+
+
+# Cada regla recibe la probabilidad justa del mercado (pm), la del modelo (pd), el mejor momio (m) y el margen de
+# Pinnacle (mg); devuelve el momio que se habría tomado, o None si no apuesta.
 ESTRATEGIAS = {
-    "Mercado (la actual)": lambda pm, pd, m: pm * m - 1 >= UMBRAL and 1.30 <= m <= 5,
-    "Modelo solo": lambda pm, pd, m: pd * m - 1 >= UMBRAL and 1.30 <= m <= 5,
-    "Doble confirmación": lambda pm, pd, m: pm * m - 1 >= UMBRAL and pd * m - 1 >= UMBRAL and 1.30 <= m <= 5,
-    "Mezcla 70% mercado / 30% modelo": lambda pm, pd, m: (0.7 * pm + 0.3 * pd) * m - 1 >= UMBRAL and 1.30 <= m <= 5,
-    "Alta certeza": lambda pm, pd, m: pm * m - 1 >= UMBRAL and 1.25 <= m <= 1.80,
+    "Mercado (la actual)": lambda pm, pd, m, mg: _si(pm * m - 1 >= UMBRAL and 1.30 <= m <= 5, m),
+    "Modelo solo": lambda pm, pd, m, mg: _si(pd * m - 1 >= UMBRAL and 1.30 <= m <= 5, m),
+    "Doble confirmación": lambda pm, pd, m, mg: _si(pm * m - 1 >= UMBRAL and pd * m - 1 >= UMBRAL and 1.30 <= m <= 5, m),
+    "Mezcla 70% mercado / 30% modelo": lambda pm, pd, m, mg: _si((0.7 * pm + 0.3 * pd) * m - 1 >= UMBRAL
+                                                                 and 1.30 <= m <= 5, m),
+    "Alta certeza": lambda pm, pd, m, mg: _si(pm * m - 1 >= UMBRAL and 1.25 <= m <= 1.80, m),
+    # Exige más valor donde Pinnacle cobra más margen (mercado menos eficiente, precio justo menos confiable)
+    "Valor según eficiencia": lambda pm, pd, m, mg: _si(pm * m - 1 >= 0.015 + max(0.0, mg - 0.025)
+                                                        and 1.30 <= m <= 5, m),
+    # La regla actual, pero cobrando el movimiento del precio al apostar: prueba de realismo
+    "Mercado con deslizamiento": lambda pm, pd, m, mg: (lambda e: _si(pm * e - 1 >= UMBRAL and 1.30 <= e <= 5, e))(
+        m / (1 + DESLIZAMIENTO)),
 }
 
 
@@ -104,14 +119,18 @@ def probar(liga: str) -> tuple[dict, dict]:
         perdida_log["mercado"] -= math.log(max(pm[resultado], 1e-9))
         perdida_log["n"] += 1
         pc = probabilidades_justas(f["cierre"]) if f["cierre"] and all(f["cierre"]) else None
+        margen = sum(1 / x for x in f["mercado"]) - 1
         for nombre, regla in ESTRATEGIAS.items():
-            opciones = [(k, pm[k] * f["precio"][k] - 1) for k in range(3) if regla(pm[k], pd_[k], f["precio"][k])]
+            opciones = []
+            for k in range(3):
+                tomado = regla(pm[k], pd_[k], f["precio"][k], margen)
+                if tomado:
+                    opciones.append((pm[k] * tomado - 1, k, tomado))
             if not opciones:
                 continue
-            k = max(opciones, key=lambda o: o[1])[0]
-            momio = f["precio"][k]
+            valor, k, momio = max(opciones)
             apuestas[nombre].append({"anio": f["fecha"].year, "gana": k == resultado,
-                                     "ganancia": momio - 1 if k == resultado else -1.0,
+                                     "ganancia": momio - 1 if k == resultado else -1.0, "valor": valor,
                                      "clv": momio * pc[k] - 1 if pc else None, "momio": momio})
     return apuestas, perdida_log
 
@@ -124,8 +143,12 @@ def resumen(lista: list[dict]) -> dict:
     media = sum(ganancias) / n
     de = math.sqrt(sum((g - media) ** 2 for g in ganancias) / (n - 1))
     clvs = [a["clv"] for a in lista if a["clv"] is not None]
+    # Valor visto al apostar, solo de las apuestas con CLV medido: así CLV / valor dice cuánto de la ventaja
+    # que se ve resulta real (el "factor de realismo" con el que arranca el cerebro)
+    valores = [a["valor"] for a in lista if a["clv"] is not None]
     return {"n": n, "acierto": sum(a["gana"] for a in lista) / n, "rendimiento": media, "t": media / (de / math.sqrt(n)),
-            "clv": sum(clvs) / len(clvs) if clvs else None, "momio": sum(a["momio"] for a in lista) / n}
+            "clv": sum(clvs) / len(clvs) if clvs else None, "momio": sum(a["momio"] for a in lista) / n,
+            "valor": sum(valores) / len(valores) if valores else None}
 
 
 def ejecutar() -> dict:
@@ -147,7 +170,7 @@ def ejecutar() -> dict:
         for a in l:
             anios.setdefault(a["anio"], []).append(a["ganancia"])
         por_anio[e] = {anio: {"n": len(g), "rendimiento": sum(g) / len(g)} for anio, g in sorted(anios.items())}
-    return {"umbral": UMBRAL, "partidos": sum(c["partidos"] for c in calidad.values()),
+    return {"version": VERSION, "umbral": UMBRAL, "partidos": sum(c["partidos"] for c in calidad.values()),
             "total": {e: resumen(l) for e, l in total.items()}, "por_anio": por_anio,
             "por_liga": por_liga, "por_clave": por_clave, "calidad": calidad}
 

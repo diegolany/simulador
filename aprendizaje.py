@@ -10,6 +10,9 @@ la ganancia tarda cientos de apuestas en dejar de ser suerte, el CLV no.
      comprobado, y regresa si los experimentos muestran que mejoraron.
    - Promoción: si una retadora le gana claramente a la Principal, sus reglas
      pasan a ser las de la Principal (y las reglas viejas quedan como retadora).
+     "Claramente" ya corrige la suerte de competir muchas estrategias a la vez:
+     el CLV de cada una se encoge hacia cero según su incertidumbre (Bayes
+     empírico) y se exige 95% de probabilidad de que la retadora sea mejor.
    - Retiro: las retadoras que pierden contra el mercado salen del laboratorio.
    - Variantes nuevas: se crean retadoras con cambios a las reglas de la
      Principal para seguir buscando mejoras.
@@ -20,6 +23,8 @@ import random
 from datetime import date, timedelta
 from pathlib import Path
 
+import cerebro
+import riesgo
 from base_datos import a_fecha, ahora, anotar, guardar_estado, iso, leer_estado
 
 OPCIONES = {
@@ -28,9 +33,11 @@ OPCIONES = {
     "momio_max": [2.5, 3.5, 5.0, 8.0, 15.0],
     "horas_max": [3, 6, 12, 24, 48, 72],
     "horas_min": [0.17, 2, 6, 24],
+    "umbral_margen": [0.0, 0.5, 1.0, 1.5],
 }
 NOMBRES = {"umbral": "valor mínimo", "momio_min": "momio mínimo", "momio_max": "momio máximo",
-           "horas_max": "máximo de horas antes del partido", "horas_min": "mínimo de horas antes del partido"}
+           "horas_max": "máximo de horas antes del partido", "horas_min": "mínimo de horas antes del partido",
+           "umbral_margen": "valor extra por margen de Pinnacle"}
 
 
 def estadistica(valores: list[float]) -> tuple[int, float, float]:
@@ -105,7 +112,7 @@ def _factor_historico(prueba: dict | None) -> float:
     return 1 + max(-0.5, min(0.5, 8 * senal))
 
 
-def aprendizaje_diario(con) -> None:
+def aprendizaje_diario(con, config: dict) -> None:
     """Una vez al día: qué tipo de apuesta le está ganando al mercado y cuál no, según el CLV."""
     hoy = date.today().isoformat()
     if leer_estado(con, "aprendizaje_diario") == hoy:
@@ -134,6 +141,14 @@ def aprendizaje_diario(con) -> None:
     anotar(con, "aprendizaje", f"Aprendizaje del día ({len(filas)} apuestas con CLV, promedio {general:+.1%}): "
                                f"le va mejor con {mejor[0]} (CLV {mejor[2]:+.1%} en {mejor[1]}) y peor con "
                                f"{peor[0]} (CLV {peor[2]:+.1%} en {peor[1]}).")
+    mente = cerebro.Cerebro(con, config)
+    firmes = [e for e in mente.resumen()["efectos"] if e["n"] >= 10]
+    texto = (f"Cerebro: de cada 1% de valor que veo, el cierre confirma {mente.factor:.2f}% "
+             f"(arrancó en {mente.previo:.2f}% por la prueba histórica; {mente.n_factor} apuestas medidas).")
+    if firmes:
+        texto += " Lo que más pesa ya con datos: " + "; ".join(
+            f"{e['dimension'].lower()} {e['nivel']} {e['efecto'] * 100:+.1f} pts ({e['n']} apuestas)" for e in firmes[:3]) + "."
+    anotar(con, "aprendizaje", texto)
     con.commit()
 
 
@@ -154,6 +169,38 @@ def calibracion_pronosticos(con) -> tuple[int, list[dict]]:
                        "real": sum(1 for _, x in g if x) / len(g)} for (a, b), g in grupos.items() if g]
 
 
+def calidad_pronosticos(con) -> dict | None:
+    """Puntaje Brier y pérdida logarítmica del precio justo contra lo que pasó (menor = mejor), comparados con
+    adivinar usando solo la frecuencia de cada resultado. 'Habilidad' = cuánto mejor que adivinar."""
+    filas = []
+    for f in con.execute("""SELECT prob_local, prob_empate, prob_visitante, resultado FROM pronosticos
+                            WHERE resultado IN ('local', 'empate', 'visitante')"""):
+        if f["resultado"] == "empate" and f["prob_empate"] is None:
+            continue
+        probs = {"local": f["prob_local"], "visitante": f["prob_visitante"]}
+        if f["prob_empate"] is not None:
+            probs["empate"] = f["prob_empate"]
+        filas.append((probs, f["resultado"]))
+    if len(filas) < 10:
+        return None
+    frecuencias = {}  # por número de opciones (2 = sin empate, 3 = con empate)
+    for probs, resultado in filas:
+        cuenta = frecuencias.setdefault(len(probs), {})
+        cuenta[resultado] = cuenta.get(resultado, 0) + 1
+    brier = brier_base = perdida = 0.0
+    for probs, resultado in filas:
+        cuenta = frecuencias[len(probs)]
+        total = sum(cuenta.values())
+        for opcion, prob in probs.items():
+            ocurrio = 1.0 if opcion == resultado else 0.0
+            brier += (prob - ocurrio) ** 2
+            brier_base += (cuenta.get(opcion, 0) / total - ocurrio) ** 2
+        perdida -= math.log(max(probs[resultado], 1e-9))
+    n = len(filas)
+    return {"partidos": n, "brier": brier / n, "brier_base": brier_base / n, "habilidad": 1 - brier / brier_base,
+            "perdida_log": perdida / n}
+
+
 def toca_revision(con, config: dict) -> bool:
     ultima = leer_estado(con, "ultima_revision")
     dias = config["aprendizaje"]["dias_entre_revisiones"]
@@ -161,8 +208,9 @@ def toca_revision(con, config: dict) -> bool:
 
 
 def _leer(con, nombre: str) -> dict:
+    from estrategias import PARAMETROS_BASE  # aquí para no crear una importación circular
     f = con.execute("SELECT * FROM estrategias WHERE nombre = ?", (nombre,)).fetchone()
-    return {**dict(f), "p": json.loads(f["parametros"])}
+    return {**dict(f), "p": {**PARAMETROS_BASE, **json.loads(f["parametros"])}}
 
 
 def _guardar_parametros(con, nombre: str, parametros: dict, descripcion: str | None = None) -> None:
@@ -171,8 +219,15 @@ def _guardar_parametros(con, nombre: str, parametros: dict, descripcion: str | N
 
 
 def _describir(p: dict) -> str:
-    return (f"valor ≥ {p['umbral']:.1%}, momios {p['momio_min']:.2f}–{p['momio_max']:.2f}, "
-            f"de {p['horas_min']:g} a {p['horas_max']:g} h antes")
+    texto = (f"valor ≥ {p['umbral']:.1%}, momios {p['momio_min']:.2f}–{p['momio_max']:.2f}, "
+             f"de {p['horas_min']:g} a {p['horas_max']:g} h antes")
+    if p.get("umbral_margen"):
+        texto += f", +{p['umbral_margen']:g} pts de valor por punto de margen arriba de 2.5%"
+    if p.get("referencia") == "consenso":
+        texto += ", precio justo de consenso"
+    if p.get("cerebro") is False:
+        texto += ", sin cerebro"
+    return texto
 
 
 def mutar(base: dict, existentes: list[dict], rng: random.Random) -> tuple[dict, str]:
@@ -238,20 +293,25 @@ def revision(con, config: dict) -> None:
         principal["p"][clave_param] = sorted(bloqueadas)
     _guardar_parametros(con, "Principal", principal["p"])
 
-    # 2. Promoción: una retadora con CLV claramente mejor pasa sus reglas a la Principal
+    # 2. Promoción: una retadora con CLV claramente mejor pasa sus reglas a la Principal. Las comparaciones usan el
+    # CLV encogido (Bayes empírico), que ya descuenta la suerte de tener muchas estrategias compitiendo
+    posts = riesgo.posteriores_laboratorio(con)
     retadoras = [_leer(con, f[0]) for f in con.execute("SELECT nombre FROM estrategias WHERE rol = 'retadora'")]
-    if n_p < ap["min_apuestas_clv_promocion"]:
+    post_p = posts.get("Principal")
+    if n_p < ap["min_apuestas_clv_promocion"] or not post_p:
         anotar(con, "aprendizaje", f"La Principal lleva {n_p} apuestas con CLV medido; se necesitan "
                                    f"{ap['min_apuestas_clv_promocion']} para compararla con las retadoras.")
     else:
         candidatas = []
         for r in retadoras:
-            n, media, ee = estadistica([v for vals in _clv_por(con, "estrategia", r["nombre"]).values()
-                                        for v in vals])
-            if n >= ap["min_apuestas_clv_promocion"] and media - ee > m_p and media > m_p + 0.005:
-                candidatas.append((media - ee, media, n, r))
+            post = posts.get(r["nombre"])
+            if not post or post["n"] < ap["min_apuestas_clv_promocion"]:
+                continue
+            prob = riesgo.prob_mejor(post, post_p)
+            if prob >= ap["prob_promocion"] and post["ventaja"] > post_p["ventaja"] + 0.005:
+                candidatas.append((prob, post["media"], post["n"], r))
         if candidatas:
-            _, media, n, mejor = max(candidatas, key=lambda c: c[0])
+            prob, media, n, mejor = max(candidatas, key=lambda c: c[0])
             anterior = f"Principal anterior (S{semana})"
             con.execute("INSERT INTO estrategias (nombre, tipo, rol, descripcion, parametros, creada) "
                         "VALUES (?, 'valor', 'retadora', ?, ?, ?)",
@@ -265,18 +325,23 @@ def revision(con, config: dict) -> None:
             con.execute("UPDATE estrategias SET rol = 'retirada', retirada = ? WHERE nombre = ?",
                         (iso(ahora()), mejor["nombre"]))
             anotar(con, "promocion", f"¡Mejora! {mejor['nombre']} superó a la Principal (CLV {media:+.2%} contra "
-                                     f"{m_p:+.2%}, {n} apuestas). La Principal adopta sus reglas: "
-                                     f"{_describir(nuevos)}. Las reglas anteriores siguen compitiendo.")
+                                     f"{m_p:+.2%}, {n} apuestas; probabilidad de que de verdad sea mejor, ya "
+                                     f"corregida por competir {len(posts)} estrategias: {prob:.0%}). La Principal "
+                                     f"adopta sus reglas: {_describir(nuevos)}. Las reglas anteriores siguen compitiendo.")
             principal = _leer(con, "Principal")
 
-    # 3. Retiro de retadoras que pierden contra el mercado
+    # 3. Retiro de retadoras que pierden contra el mercado o claramente contra la Principal
     for r in [_leer(con, f[0]) for f in con.execute("SELECT nombre FROM estrategias WHERE rol = 'retadora'")]:
-        n, media, ee = estadistica([v for vals in _clv_por(con, "estrategia", r["nombre"]).values() for v in vals])
-        if n >= ap["min_apuestas_clv_retiro"] and (media + ee < 0 or (n_p and media < m_p - 0.01)):
+        post = posts.get(r["nombre"])
+        if not post or post["n"] < ap["min_apuestas_clv_retiro"]:
+            continue
+        peor_que_principal = post_p is not None and riesgo.prob_mejor(post_p, post) >= ap["prob_promocion"]
+        if post["p_ventaja"] <= ap["prob_retiro"] or peor_que_principal:
             con.execute("UPDATE estrategias SET rol = 'retirada', retirada = ? WHERE nombre = ?",
                         (iso(ahora()), r["nombre"]))
-            anotar(con, "retiro", f"Se retira {r['nombre']}: CLV {media:+.2%} en {n} apuestas, "
-                                  f"no le gana al mercado.")
+            anotar(con, "retiro", f"Se retira {r['nombre']}: CLV {post['media']:+.2%} en {post['n']} apuestas; "
+                                  f"probabilidad de ventaja real {post['p_ventaja']:.0%}"
+                                  + (", y la Principal es claramente mejor." if peor_que_principal else "."))
 
     # 4. Variantes nuevas para seguir explorando
     rng = random.Random()

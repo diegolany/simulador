@@ -4,14 +4,20 @@ Cada estrategia tiene su propia banca ficticia. La "Principal" es la cartera de
 $100,000 que se muestra en el tablero; las "retadoras" son experimentos que compiten
 contra ella; el "Apostador casual" es el grupo de control que muestra por qué
 pierde la mayoría.
+
+Realismo al apostar: se cuenta el momio publicado menos un deslizamiento (el precio se mueve antes de que entre
+la apuesta, y más mientras más tiempo pasó desde que se vio), cada casa tiene un tope por apuesta, las casas que
+ya te habrían limitado solo aceptan montos chicos y nunca hay más de cierta parte de la banca en juego.
 """
 import json
 from datetime import timedelta
 from statistics import median
 
+import cerebro
 import marcadores
+import riesgo
 from base_datos import a_fecha, ahora, anotar, iso
-from momios import fraccion_kelly, probabilidades_justas, valor_esperado
+from momios import fraccion_kelly, margen_casa, probabilidades_justas, valor_esperado
 
 PARAMETROS_BASE = {
     "umbral": 0.02,         # valor mínimo sobre la probabilidad justa
@@ -23,7 +29,12 @@ PARAMETROS_BASE = {
     "tope": 0.02,           # máximo 2% de la banca por apuesta
     "ligas_bloqueadas": [],
     "casas_bloqueadas": [],
+    "umbral_margen": 0.0,   # valor extra exigido por cada punto de margen de Pinnacle arriba de 2.5%
+    "referencia": "pinnacle",  # pinnacle, o consenso (mitad Pinnacle, mitad casas de intercambio)
+    "cerebro": True,        # filtro y monto según la ventaja real que estima el cerebro
 }
+MARGEN_EFICIENTE = 0.025
+INTERCAMBIOS = ("betfair_ex_eu", "matchbook")
 
 ESTRATEGIAS_INICIALES = [
     ("Principal", "valor", "principal",
@@ -44,6 +55,16 @@ ESTRATEGIAS_INICIALES = [
     ("Alta certeza", "valor", "retadora",
      "Favoritos con valor: momios 1.25 a 1.80 (en pruebas históricas acertó 68%)",
      {"momio_min": 1.25, "momio_max": 1.80}),
+    ("Valor según eficiencia", "valor", "retadora",
+     "Exige más valor donde Pinnacle cobra más margen (mercado menos eficiente): 1.5% más 1 punto por cada punto de "
+     "margen arriba de 2.5%. En pruebas históricas rindió +6.2% (t = 3.1)",
+     {"umbral": 0.015, "umbral_margen": 1.0}),
+    ("Consenso sharp", "valor", "retadora",
+     "Precio justo = mitad Pinnacle y mitad casas de intercambio (Betfair, Matchbook): una referencia con menos ruido",
+     {"referencia": "consenso"}),
+    ("Sin cerebro", "valor", "retadora",
+     "Reglas de la Principal con el monto según el valor a simple vista, sin el cerebro: mide si el cerebro ayuda",
+     {"cerebro": False}),
     # Experimentos con momios gratuitos de DraftKings: apuestan aunque la diferencia con el precio justo sea
     # mínima, con monto fijo pequeño, para aprender rápido qué forma de apostar ahí deja dinero.
     # Solo informan: nunca cambian las reglas de la Principal.
@@ -84,7 +105,7 @@ def sembrar(con) -> None:
 def activas(con) -> list[dict]:
     filas = con.execute("SELECT nombre, tipo, rol, descripcion, parametros FROM estrategias WHERE rol != 'retirada'").fetchall()
     return [{"nombre": f["nombre"], "tipo": f["tipo"], "rol": f["rol"], "descripcion": f["descripcion"],
-             "p": json.loads(f["parametros"])} for f in filas]
+             "p": {**PARAMETROS_BASE, **json.loads(f["parametros"])}} for f in filas]
 
 
 def banca(con, estrategia: str, inicial: float) -> tuple[float, float]:
@@ -96,15 +117,113 @@ def banca(con, estrategia: str, inicial: float) -> tuple[float, float]:
     return inicial + ganado, en_juego
 
 
-def _foto(con, capturado: str) -> dict:
-    """{evento: {casa: {"momios": {seleccion: momio}, "actualizado": iso}}} de una captura."""
+def _foto(con, capturado: str, evento_id: str | None = None) -> dict:
+    """{evento: {casa: {"momios": {seleccion: momio}, "actualizado": iso}}} de una captura (o de un partido de ella)."""
+    sql = """SELECT evento_id, casa, seleccion, momio, actualizado_casa FROM momios
+             WHERE capturado = ? AND mercado = 'h2h'"""
+    parametros = [capturado]
+    if evento_id:
+        sql += " AND evento_id = ?"
+        parametros.append(evento_id)
     foto = {}
-    for f in con.execute("""SELECT evento_id, casa, seleccion, momio, actualizado_casa FROM momios
-                            WHERE capturado = ? AND mercado = 'h2h'""", (capturado,)):
+    for f in con.execute(sql, parametros):
         casa = foto.setdefault(f["evento_id"], {}).setdefault(f["casa"], {"momios": {}, "actualizado": None})
         casa["momios"][f["seleccion"]] = f["momio"]
         casa["actualizado"] = f["actualizado_casa"]
     return foto
+
+
+def deslizamiento(config: dict, minutos: float) -> float:
+    """Parte del precio que se pierde al apostar: el momio se mueve antes de que entre la apuesta, y se mueve más
+    mientras más tiempo pasó desde que se vio."""
+    e = config["ejecucion"]
+    return min(e["deslizamiento_max"], e["deslizamiento_base"] + e["deslizamiento_por_minuto"] * max(0.0, minutos))
+
+
+def precio_ejecutado(momio: float, desliz: float) -> float:
+    """Momio que realmente se habría conseguido."""
+    return max(1.01, round(momio / (1 + desliz), 3))
+
+
+def _justas_de(momios: dict, selecciones: list) -> dict:
+    return dict(zip(selecciones, probabilidades_justas([momios[s] for s in selecciones])))
+
+
+def _consenso(casas: dict, selecciones: list, justas: dict, momento, max_antiguedad) -> dict:
+    """Precio justo de consenso: mitad Pinnacle y mitad casas de intercambio (frescas y con liquidez, margen < 8%).
+    Si no hay intercambios útiles, se queda el de Pinnacle."""
+    otras = []
+    for casa in INTERCAMBIOS:
+        d = casas.get(casa)
+        if (not d or set(d["momios"]) != set(selecciones) or not d["actualizado"]
+                or momento - a_fecha(d["actualizado"]) > max_antiguedad
+                or margen_casa(list(d["momios"].values())) > 0.08):
+            continue
+        otras.append(_justas_de(d["momios"], selecciones))
+    if not otras:
+        return justas
+    mezcla = {s: 0.5 * justas[s] + 0.5 * sum(o[s] for o in otras) / len(otras) for s in selecciones}
+    total = sum(mezcla.values())
+    return {s: v / total for s, v in mezcla.items()}
+
+
+class _Contexto:
+    """Lo que se consulta una vez por pasada: el cerebro, las cuentas limitadas y la caída de cada banca."""
+
+    def __init__(self, con, config: dict):
+        self.con, self.config = con, config
+        self.mente = cerebro.Cerebro(con, config)
+        self.limitadas = riesgo.cuentas_limitadas(con)
+        self.descartadas = 0
+        self._caidas = {}
+
+    def caida(self, estrategia: str) -> float:
+        if estrategia not in self._caidas:
+            filas = [dict(r) for r in self.con.execute(
+                "SELECT estado, ganancia, liquidada FROM apuestas WHERE estrategia = ? AND estado IN ('ganada', 'perdida')",
+                (estrategia,))]
+            self._caidas[estrategia] = riesgo.caidas(filas, self.config["banca_inicial"])["actual_pct"]
+        return self._caidas[estrategia]
+
+
+def _monto(ctx: _Contexto, est: dict, fraccion: float, casa: str, deporte: str) -> tuple[int, float, list[str]]:
+    """Monto en pesos con los controles de riesgo y de realismo. Devuelve (monto, banca, notas); monto 0 = no apostar."""
+    config = ctx.config
+    r, e = config["riesgo"], config["ejecucion"]
+    actual, en_juego = banca(ctx.con, est["nombre"], config["banca_inicial"])
+    notas = []
+    if est["tipo"] == "favorito":  # el apostador casual no controla su riesgo: solo apuesta lo que tiene libre
+        monto = int(fraccion * actual / 10) * 10
+        return (monto if config["apuesta_minima"] <= monto <= actual - en_juego else 0), actual, notas
+    if est["tipo"] == "valor" and ctx.caida(est["nombre"]) >= r["freno_caida"]:
+        fraccion *= r["factor_freno"]
+        notas.append(f"freno por caída de {ctx.caida(est['nombre']):.0%} de la banca: monto al {r['factor_freno']:.0%}")
+    monto = fraccion * actual
+    limite = e["limite_apuesta"] if deporte in e["ligas_mayores"] else e["limite_apuesta_liga_menor"]
+    if casa in ctx.limitadas:
+        limite = min(limite, e["limite_cuenta_limitada"])
+        notas.append(f"{casa} ya te habría limitado: acepta máximo ${limite:,.0f}")
+    elif monto > limite:
+        notas.append(f"tope de la casa para esta liga: ${limite:,.0f}")
+    monto = min(monto, limite)
+    espacio = r["max_exposicion"] * actual - en_juego
+    if monto > espacio:
+        monto = espacio
+        notas.append(f"tope de exposición: máximo {r['max_exposicion']:.0%} de la banca en juego")
+    monto = int(monto / 10) * 10
+    return (monto if monto >= config["apuesta_minima"] else 0), actual, notas
+
+
+def _registrar(con, est: dict, ev, sel: str, casa: str, momio: float, visto: float, momio_ref: float, prob: float,
+               monto: int, colocada: str, razon: str, margen: float, ventaja: float | None, minutos: float) -> None:
+    con.execute(
+        """INSERT INTO apuestas (estrategia, evento_id, deporte, liga, mercado, seleccion, casa, momio, momio_ref,
+                                 prob_justa, valor, monto, colocada, inicio, razon, momio_visto, margen_ref,
+                                 ventaja_estimada, minutos_precio)
+           VALUES (?, ?, ?, ?, 'h2h', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+        (est["nombre"], ev["id"], ev["deporte"], ev["liga"], sel, casa, momio, momio_ref, prob,
+         valor_esperado(prob, momio), monto, colocada, ev["inicio"], razon, visto, round(margen, 4),
+         round(ventaja, 4) if ventaja is not None else None, minutos))
 
 
 def colocar_apuestas(con, config: dict, capturado: str) -> tuple[dict, int]:
@@ -117,7 +236,11 @@ def colocar_apuestas(con, config: dict, capturado: str) -> tuple[dict, int]:
     excluidas = set(config["casas_excluidas"]) | {referencia}
     momento = a_fecha(capturado)
     max_antiguedad = timedelta(minutes=config["max_minutos_momio"])
+    # Minutos desde que se vio el precio: al reanalizar fotos viejas el precio pudo moverse más
+    minutos = max(0.0, (ahora() - momento).total_seconds() / 60)
+    desliz = deslizamiento(config, minutos)
     estrategias = activas(con)
+    ctx = _Contexto(con, config)
     ya_apostadas = {(f[0], f[1]) for f in con.execute(
         f"SELECT estrategia, evento_id FROM apuestas WHERE evento_id IN ({','.join('?' * len(foto))})",
         list(foto))}
@@ -134,7 +257,8 @@ def colocar_apuestas(con, config: dict, capturado: str) -> tuple[dict, int]:
         if horas <= 0 or empieza_ya or not ref or len(ref["momios"]) < 2:
             continue
         selecciones = list(ref["momios"])
-        justas = dict(zip(selecciones, probabilidades_justas([ref["momios"][s] for s in selecciones])))
+        justas = _justas_de(ref["momios"], selecciones)
+        margen = margen_casa(list(ref["momios"].values()))
         if ev["local"] in justas and ev["visitante"] in justas:  # pronóstico para medir la calibración
             con.execute("""INSERT INTO pronosticos (evento_id, deporte, local, visitante, inicio, prob_local, prob_empate,
                                                     prob_visitante, capturado) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -152,52 +276,69 @@ def colocar_apuestas(con, config: dict, capturado: str) -> tuple[dict, int]:
                 continue  # otro mercado: ej. hockey europeo a 3 vías (tiempo regular) contra 2 vías de Pinnacle
             if momento - a_fecha(datos["actualizado"]) > max_antiguedad:
                 continue  # momio viejo: probablemente ya no está disponible
-            for sel, momio in datos["momios"].items():
+            for sel, visto in datos["momios"].items():
                 if sel in justas:
-                    ofertas.append({"casa": casa, "sel": sel, "momio": momio,
-                                    "valor": valor_esperado(justas[sel], momio)})
-        if any(0.02 <= o["valor"] <= config["valor_sospechoso"] and o["momio"] <= 10 for o in ofertas):
+                    ofertas.append({"casa": casa, "sel": sel, "visto": visto, "momio": precio_ejecutado(visto, desliz)})
+        if any(0.02 <= valor_esperado(justas[o["sel"]], o["momio"]) <= config["valor_sospechoso"] and o["momio"] <= 10
+               for o in ofertas):
             senales += 1
 
+        consenso = None
         for est in estrategias:
             p = est["p"]
             if est["tipo"] not in ("valor", "favorito"):
-                continue  # la cartera Gratuita apuesta aparte, con momios gratuitos
+                continue  # los experimentos DraftKings apuestan aparte, con momios gratuitos
             if (est["nombre"], evento_id) in ya_apostadas or not p["horas_min"] <= horas <= p["horas_max"]:
                 continue
             if ev["liga"] in p["ligas_bloqueadas"]:
                 continue
+            ventaja, ajustes = None, []
             if est["tipo"] == "valor":
-                candidatas = [o for o in ofertas
-                              if o["casa"] not in p["casas_bloqueadas"]
-                              and p["momio_min"] <= o["momio"] <= p["momio_max"]
-                              and p["umbral"] <= o["valor"] <= config["valor_sospechoso"]]
+                probs, nombre_ref = justas, "Pinnacle"
+                if p["referencia"] == "consenso":
+                    if consenso is None:
+                        consenso = _consenso(casas, selecciones, justas, momento, max_antiguedad)
+                    probs, nombre_ref = consenso, "El consenso (Pinnacle + intercambios)"
+                umbral = p["umbral"] + p["umbral_margen"] * max(0.0, margen - MARGEN_EFICIENTE)
+                candidatas = []
+                for o in ofertas:
+                    v = valor_esperado(probs[o["sel"]], o["momio"])
+                    if (o["casa"] in p["casas_bloqueadas"] or not p["momio_min"] <= o["momio"] <= p["momio_max"]
+                            or not umbral <= v <= config["valor_sospechoso"]):
+                        continue
+                    estimada, aj = v, []
+                    if p["cerebro"]:
+                        estimada, aj = ctx.mente.estimar(v, cerebro.rasgos(ev["liga"], o["casa"], o["momio"], horas, margen))
+                        if estimada <= 0:
+                            ctx.descartadas += 1
+                            continue  # el cerebro no ve ventaja real en este tipo de apuesta
+                    candidatas.append((estimada, o, aj))
                 if not candidatas:
                     continue
-                elegida = max(candidatas, key=lambda o: o["valor"])
-                casa, sel, momio = elegida["casa"], elegida["sel"], elegida["momio"]
-                fraccion = fraccion_kelly(justas[sel], momio, p["kelly"], p["tope"])
-                razon = _razon_valor(casa, sel, momio, justas[sel], horas, fraccion)
+                estimada, elegida, ajustes = max(candidatas, key=lambda c: c[0])
+                casa, sel, momio, visto = elegida["casa"], elegida["sel"], elegida["momio"], elegida["visto"]
+                prob = probs[sel]
+                ventaja = estimada if p["cerebro"] else None
+                fraccion = fraccion_kelly(min(0.99, (1 + estimada) / momio), momio, p["kelly"], p["tope"])
             else:  # favorito: lo que haría un apostador casual
                 sel = max((s for s in selecciones if s != "Draw"), key=lambda s: justas[s])
-                precios = [o["momio"] for o in ofertas if o["sel"] == sel]
+                precios = [o["visto"] for o in ofertas if o["sel"] == sel]
                 if len(precios) < 2:
                     continue
                 casa, momio, fraccion = "promedio", round(median(precios), 2), p["fijo"]
-                razon = (f"Control: apuesto al favorito ({justas[sel]:.0%}) al momio promedio de {len(precios)} casas "
-                         f"({momio:.2f}), sin buscar valor, como lo haría un apostador casual.")
+                visto, prob = momio, justas[sel]
 
-            actual, en_juego = banca(con, est["nombre"], config["banca_inicial"])
-            monto = int(fraccion * actual / 10) * 10
-            if monto < config["apuesta_minima"] or monto > actual - en_juego:
+            monto, actual, notas = _monto(ctx, est, fraccion, casa, ev["deporte"])
+            if not monto:
                 continue
-            con.execute(
-                """INSERT INTO apuestas (estrategia, evento_id, deporte, liga, mercado, seleccion, casa, momio,
-                                         momio_ref, prob_justa, valor, monto, colocada, inicio, razon)
-                   VALUES (?, ?, ?, ?, 'h2h', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-                (est["nombre"], evento_id, ev["deporte"], ev["liga"], sel, casa, momio, ref["momios"][sel],
-                 justas[sel], valor_esperado(justas[sel], momio), monto, capturado, ev["inicio"], razon),
-            )
+            if est["tipo"] == "valor":
+                razon = _razon_valor(casa, sel, visto, momio, prob, horas, monto, actual, ventaja, ajustes, notas,
+                                     referencia=nombre_ref)
+            else:
+                razon = (f"Control: apuesto al favorito ({prob:.0%}) al momio promedio de {len(precios)} casas "
+                         f"({momio:.2f}), sin buscar valor, como lo haría un apostador casual.")
+            _registrar(con, est, ev, sel, casa, momio, visto, ref["momios"][sel], prob, monto, capturado, razon,
+                       margen, ventaja, round(minutos, 1))
             ya_apostadas.add((est["nombre"], evento_id))
             colocadas[est["nombre"]] = colocadas.get(est["nombre"], 0) + 1
     con.commit()
@@ -208,22 +349,34 @@ def _nombre(seleccion: str) -> str:
     return "el empate" if seleccion == "Draw" else seleccion
 
 
-def _razon_valor(casa: str, sel: str, momio: float, prob: float, horas: float, fraccion: float, extra: str = "",
-                 fijo: bool = False) -> str:
-    return (f"{casa} paga {momio:.2f} por {_nombre(sel)}. Pinnacle, sin su comisión, le da {prob:.0%} "
-            f"(precio justo {1 / prob:.2f}): valor {valor_esperado(prob, momio):+.1%}. Faltan {horas:.0f} h para el "
-            f"partido. Apuesto {fraccion:.1%} de la banca ({'monto fijo de experimento' if fijo else '¼ de Kelly'}).{extra}")
+def _razon_valor(casa: str, sel: str, visto: float, momio: float, prob: float, horas: float, monto: int,
+                 actual: float, ventaja: float | None = None, ajustes=(), notas=(), extra: str = "",
+                 fijo: bool = False, referencia: str = "Pinnacle") -> str:
+    texto = f"{casa} paga {visto:.2f} por {_nombre(sel)}"
+    if momio < visto:
+        texto += f" (cuento {momio:.2f} por el movimiento del precio al apostar)"
+    texto += (f". {referencia}, sin comisión, le da {prob:.0%} (precio justo {1 / prob:.2f}): "
+              f"valor {valor_esperado(prob, momio):+.1%}.")
+    if ventaja is not None:
+        explicacion = cerebro.explicar(ajustes)
+        texto += f" El cerebro estima la ventaja real en {ventaja:+.1%}" + (f" ({explicacion})." if explicacion else ".")
+    modo = ("monto fijo de experimento" if fijo else "¼ de Kelly sobre la ventaja estimada" if ventaja is not None
+            else "¼ de Kelly")
+    texto += f" Faltan {horas:.0f} h. Apuesto ${monto:,.0f} ({monto / actual:.2%} de la banca, {modo})."
+    if notas:
+        texto += " Control de riesgo: " + "; ".join(notas) + "."
+    return texto + extra
 
 
-def _califica(p: dict, momio: float, valor: float, apertura: float | None, cambio_pinnacle: float | None,
-              config: dict) -> bool:
+def _califica(p: dict, momio: float, visto: float, valor: float, umbral: float, apertura: float | None,
+              cambio_pinnacle: float | None, config: dict) -> bool:
     """¿La selección cumple las reglas de la estrategia? Los experimentos DraftKings añaden una condición:
     'movimiento' = su momio bajó desde la apertura (entró dinero); 'pinnacle_mueve' = Pinnacle subió su probabilidad."""
-    if not p["momio_min"] <= momio <= p["momio_max"] or not p["umbral"] <= valor <= config["valor_sospechoso"]:
+    if not p["momio_min"] <= momio <= p["momio_max"] or not umbral <= valor <= config["valor_sospechoso"]:
         return False
     modo = p.get("modo", "valor")
     if modo == "movimiento":
-        return bool(apertura) and (apertura - momio) / apertura >= p["movimiento_min"]
+        return bool(apertura) and (apertura - visto) / apertura >= p["movimiento_min"]
     if modo == "pinnacle_mueve":
         return cambio_pinnacle is not None and cambio_pinnacle >= p["movimiento_min"]
     return True
@@ -240,6 +393,8 @@ def apostar_gratis(con, config: dict) -> dict:
         return {}, resumen
     momento = ahora()
     referencia = config["casa_referencia"]
+    max_antiguedad = timedelta(minutes=config["max_minutos_momio"])
+    desliz = deslizamiento(config, 0)  # momio vigente según ESPN: solo el movimiento normal al apostar
     filas = con.execute(
         """SELECT e.id, e.deporte, e.liga, e.local, e.visitante, e.inicio, MAX(m.capturado) AS cap
            FROM eventos e JOIN momios m ON m.evento_id = e.id AND m.casa = ? AND m.mercado = 'h2h'
@@ -250,7 +405,7 @@ def apostar_gratis(con, config: dict) -> dict:
          iso(momento - timedelta(hours=config["max_horas_referencia"])))).fetchall()
     ya_apostadas = {(f[0], f[1]) for f in con.execute("SELECT estrategia, evento_id FROM apuestas WHERE inicio > ?",
                                                       (iso(momento),))}
-    cache, colocadas = {}, {}
+    cache, colocadas, ctx = {}, {}, None
     for ev in filas:
         pendientes = [e for e in estrategias if (e["nombre"], ev["id"]) not in ya_apostadas]
         if not pendientes or not marcadores.cubierto_momios(ev["deporte"]):
@@ -264,7 +419,9 @@ def apostar_gratis(con, config: dict) -> dict:
             continue  # sin precio gratuito o con otras opciones que la referencia
         casa, precios, apertura = encontrado
         selecciones = list(ref)
-        justas = dict(zip(selecciones, probabilidades_justas([ref[s] for s in selecciones])))
+        justas = _justas_de(ref, selecciones)
+        margen = margen_casa(list(ref.values()))
+        ejecutados = {s: precio_ejecutado(precios[s], desliz) for s in selecciones}
         # Foto anterior de Pinnacle: para ver hacia dónde se movió el dinero profesional
         anterior = con.execute("""SELECT MAX(capturado) FROM momios WHERE evento_id = ? AND casa = ? AND mercado = 'h2h'
                                   AND capturado < ?""", (ev["id"], referencia, ev["cap"])).fetchone()[0]
@@ -279,26 +436,46 @@ def apostar_gratis(con, config: dict) -> dict:
         edad = (momento - a_fecha(ev["cap"])).total_seconds() / 3600
         resumen["comparados"] += 1
         for s in selecciones:
-            v = valor_esperado(justas[s], precios[s])
+            v = valor_esperado(justas[s], ejecutados[s])
             if 1.30 <= precios[s] <= 5 and (resumen["mejor"] is None or v > resumen["mejor"]["valor"]):
                 resumen["mejor"] = {"valor": v, "partido": f"{ev['local']} vs {ev['visitante']}",
                                     "seleccion": _nombre(s), "momio": round(precios[s], 2), "justo": round(1 / justas[s], 2)}
-        registrado = False
+        if ctx is None:
+            ctx = _Contexto(con, config)
+        consenso, registrado = None, False
         for est in pendientes:
             p = est["p"]
             if ev["liga"] in p["ligas_bloqueadas"] or casa in p["casas_bloqueadas"] or not p["horas_min"] <= horas <= p["horas_max"]:
                 continue
-            candidatas = [(s, round(precios[s], 3)) for s in selecciones
-                          if _califica(p, precios[s], valor_esperado(justas[s], precios[s]), apertura.get(s),
-                                       justas[s] - previas[s] if s in previas else None, config)]
+            probs, nombre_ref = justas, "Pinnacle"
+            if est["tipo"] == "valor" and p["referencia"] == "consenso":
+                if consenso is None:  # intercambios de la misma descarga de Pinnacle
+                    casas_cap = _foto(con, ev["cap"], ev["id"]).get(ev["id"], {})
+                    consenso = _consenso(casas_cap, selecciones, justas, a_fecha(ev["cap"]), max_antiguedad)
+                probs, nombre_ref = consenso, "El consenso (Pinnacle + intercambios)"
+            usa_cerebro = est["tipo"] == "valor" and p["cerebro"]
+            umbral = p["umbral"] + p["umbral_margen"] * max(0.0, margen - MARGEN_EFICIENTE)
+            candidatas = []
+            for s in selecciones:
+                v = valor_esperado(probs[s], ejecutados[s])
+                if not _califica(p, ejecutados[s], precios[s], v, umbral, apertura.get(s),
+                                 justas[s] - previas[s] if s in previas else None, config):
+                    continue
+                estimada, aj = v, []
+                if usa_cerebro:
+                    estimada, aj = ctx.mente.estimar(v, cerebro.rasgos(ev["liga"], casa, ejecutados[s], horas, margen))
+                    if estimada <= 0:
+                        ctx.descartadas += 1
+                        continue
+                candidatas.append((estimada, s, aj))
             if not candidatas:
                 continue
-            sel, momio = max(candidatas, key=lambda c: valor_esperado(justas[c[0]], c[1]))
+            estimada, sel, ajustes = max(candidatas, key=lambda c: c[0])
+            momio = ejecutados[sel]
             # Las estrategias de valor usan ¼ de Kelly; los experimentos, un monto fijo pequeño para medir
-            fraccion = p.get("fijo") or fraccion_kelly(justas[sel], momio, p["kelly"], p["tope"])
-            actual, en_juego = banca(con, est["nombre"], config["banca_inicial"])
-            monto = int(fraccion * actual / 10) * 10
-            if monto < config["apuesta_minima"] or monto > actual - en_juego:
+            fraccion = p.get("fijo") or fraccion_kelly(min(0.99, (1 + estimada) / momio), momio, p["kelly"], p["tope"])
+            monto, actual, notas = _monto(ctx, est, fraccion, casa, ev["deporte"])
+            if not monto:
                 continue
             colocada = iso(momento)
             if not registrado:  # el momio tomado queda guardado para poder revisarlo después
@@ -307,16 +484,13 @@ def apostar_gratis(con, config: dict) -> dict:
                                                        actualizado_casa) VALUES (?, ?, 'h2h', ?, NULL, ?, ?, ?)""",
                                 (ev["id"], casa, s, round(m, 3), colocada, colocada))
                 registrado = True
-            con.execute(
-                """INSERT INTO apuestas (estrategia, evento_id, deporte, liga, mercado, seleccion, casa, momio, momio_ref,
-                                         prob_justa, valor, monto, colocada, inicio, razon)
-                   VALUES (?, ?, ?, ?, 'h2h', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-                (est["nombre"], ev["id"], ev["deporte"], ev["liga"], sel, casa, momio, ref[sel], justas[sel],
-                 valor_esperado(justas[sel], momio), monto, colocada, ev["inicio"],
-                 _razon_valor(casa, sel, momio, justas[sel], horas, fraccion,
-                              f" Momio gratuito (ESPN); precio justo de Pinnacle de hace {edad:.1f} h."
-                              + (f" Experimento: {est['descripcion']}." if est["tipo"] == "gratis" else ""),
-                              fijo=bool(p.get("fijo")))))
+            razon = _razon_valor(casa, sel, precios[sel], momio, probs[sel], horas, monto, actual,
+                                 estimada if usa_cerebro else None, ajustes, notas,
+                                 f" Momio gratuito (ESPN); precio justo de hace {edad:.1f} h."
+                                 + (f" Experimento: {est['descripcion']}." if est["tipo"] == "gratis" else ""),
+                                 fijo=bool(p.get("fijo")), referencia=nombre_ref)
+            _registrar(con, est, ev, sel, casa, momio, round(precios[sel], 3), ref[sel], probs[sel], monto, colocada,
+                       razon, margen, estimada if usa_cerebro else None, 0.0)
             ya_apostadas.add((est["nombre"], ev["id"]))
             colocadas[est["nombre"]] = colocadas.get(est["nombre"], 0) + 1
     con.commit()

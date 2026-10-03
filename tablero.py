@@ -1,13 +1,25 @@
 """Arma los datos que muestra el tablero web (nunca incluye la clave de la API)."""
 import json
 import math
+import traceback
 from calendar import monthrange
 from datetime import date, timedelta
 
-from aprendizaje import calibracion_pronosticos, estadistica, evidencia
+import cerebro
+import riesgo
+from aprendizaje import calibracion_pronosticos, calidad_pronosticos, estadistica, evidencia
 from api import creditos_hoy
 from base_datos import a_fecha, ahora, iso, leer_estado
 from momios import decimal_a_americano, probabilidades_justas
+
+
+def _seguro(funcion, *args):
+    """Una sección que falle no debe tumbar todo el tablero: se omite y se registra el error."""
+    try:
+        return funcion(*args)
+    except Exception:
+        traceback.print_exc()
+        return None
 
 DEPORTES = {"soccer": "Fútbol", "basketball": "Básquetbol", "americanfootball": "Fútbol americano",
             "baseball": "Béisbol", "icehockey": "Hockey", "mma": "MMA", "boxing": "Box", "tennis": "Tenis"}
@@ -35,6 +47,8 @@ def _resumen(apuestas: list[dict]) -> dict:
         "rendimiento": ganancia / apostado if apostado else None,
         "clv": clv if n_clv else None,
         "clv_n": n_clv,
+        "gana_cierre": (sum(1 for a in apuestas if (a["clv"] or 0) > 0 and a["estado"] != "anulada") / n_clv
+                        if n_clv else None),
         "en_juego": sum(a["monto"] for a in apuestas if a["estado"] == "abierta"),
     }
 
@@ -142,9 +156,11 @@ def _fila(a: dict) -> dict:
         "partido": f"{a['local']} vs {a['visitante']}", "liga": a["liga"], "deporte": nombre_deporte(a["deporte"]),
         "seleccion": "Empate" if a["seleccion"] == "Draw" else a["seleccion"], "casa": a["casa"],
         "fuente": _origen(a),
-        "momio": a["momio"], "monto": a["monto"], "estado": a["estado"], "ganancia": a["ganancia"],
+        "momio": a["momio"], "momio_visto": a["momio_visto"], "monto": a["monto"], "estado": a["estado"],
+        "ganancia": a["ganancia"],
         "marcador": f"{a['marcador_local']}-{a['marcador_visitante']}" if a["marcador_local"] is not None else None,
         "clv": a["clv"], "clv_fuente": a["clv_fuente"], "nota": a["nota"], "razon": a["razon"],
+        "valor": a["valor"], "ventaja": a["ventaja_estimada"],
     }
 
 
@@ -231,6 +247,7 @@ def estado(con, config: dict) -> dict:
             "potencial": a["monto"] * (a["momio"] - 1), "prob": a["prob_justa"], "valor": a["valor"],
             "momio_ref": a["momio_ref"], "momio_ref_actual": momio_ref_actual, "movimiento": movimiento,
             "razon": a["razon"], "fuente": "draftkings" if a["casa"] == "draftkings" else "creditos",
+            "momio_visto": a["momio_visto"], "ventaja": a["ventaja_estimada"],
         })
     activas.sort(key=lambda x: x["inicio"])
 
@@ -241,16 +258,23 @@ def estado(con, config: dict) -> dict:
     for a in sorted(todas, key=lambda a: a["colocada"], reverse=True):
         por_estrategia.setdefault(a["estrategia"], []).append(_fila(a))
 
-    # Laboratorio: todas las estrategias compitiendo, cada una con su banca
+    # Laboratorio: todas las estrategias compitiendo, cada una con su banca. La confianza usa el CLV encogido:
+    # ya descuenta la suerte de tener muchas estrategias compitiendo a la vez
+    posts = _seguro(riesgo.posteriores_laboratorio, con) or {}
     laboratorio = []
     for e in con.execute("SELECT * FROM estrategias ORDER BY CASE rol WHEN 'principal' THEN 0 "
                          "WHEN 'retadora' THEN 1 WHEN 'experimento' THEN 2 WHEN 'control' THEN 3 ELSE 4 END, creada"):
         propias = [a for a in todas if a["estrategia"] == e["nombre"]]
         r = _resumen(propias)
         por_origen = {o: _resumen([a for a in propias if _origen(a) == o]) for o in ("creditos", "draftkings")}
+        post = posts.get(e["nombre"])
+        confianza = _seguro(riesgo.confianza, [a["clv"] for a in propias if a["clv"] is not None and a["estado"] != "anulada"],
+                            post, [a["momio"] for a in propias if a["estado"] in ("ganada", "perdida")])
+        caidas = riesgo.caidas(propias, inicial)
         laboratorio.append({"nombre": e["nombre"], "rol": e["rol"], "tipo": e["tipo"],
                             "descripcion": e["descripcion"], "parametros": json.loads(e["parametros"]),
-                            "banca": inicial + r["ganancia"], "por_origen": por_origen, **r})
+                            "banca": inicial + r["ganancia"], "por_origen": por_origen, "confianza": confianza,
+                            "caida_max": caidas["maxima_pct"], **r})
 
     # Calibración con todos los partidos pronosticados (se haya apostado o no)
     partidos_calibrados, calibracion = calibracion_pronosticos(con)
@@ -279,6 +303,10 @@ def estado(con, config: dict) -> dict:
         "laboratorio": laboratorio,
         "calibracion": calibracion,
         "calibracion_partidos": partidos_calibrados,
+        "calidad_pronosticos": _seguro(calidad_pronosticos, con),
+        "riesgo": _seguro(riesgo.panel, con, config),
+        "cerebro": _seguro(lambda: cerebro.Cerebro(con, config).resumen()),
+        "config_riesgo": {**config["riesgo"], "deslizamiento_base": config["ejecucion"]["deslizamiento_base"]},
         "diario": diario,
         "bitacora": bitacora,
         "creditos": _creditos(con, config, inicio, restantes),

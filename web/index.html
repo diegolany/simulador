@@ -219,6 +219,7 @@ footer { margin-top: 28px; color: var(--tenue); font-size: 12.5px; line-height: 
   <nav class="pestanas" role="tablist">
     <button data-pestana="resumen" class="activa">Resumen</button>
     <button data-pestana="apuestas">Apuestas<span class="conteo" id="conteo-activas"></span></button>
+    <button data-pestana="riesgo">Riesgo</button>
     <button data-pestana="laboratorio">Laboratorio</button>
     <button data-pestana="diario">Diario</button>
     <button data-pestana="bitacora">Bitácora</button>
@@ -295,11 +296,61 @@ footer { margin-top: 28px; color: var(--tenue); font-size: 12.5px; line-height: 
     <div class="tarjeta"><div class="tabla" id="historial"></div></div>
   </section>
 
+  <section data-panel="riesgo" hidden>
+    <div class="tarjeta">
+      <p class="ayuda" style="margin:0">Lo que mide un apostador profesional además del CLV: si la ventaja es real o suerte, cuánto puede caer la
+        banca en el camino, qué tan probable es cumplir la meta y si las casas ya te habrían limitado. Todo es de la cartera Principal y se
+        calcula sin gastar créditos.</p>
+    </div>
+
+    <h3 class="seccion">¿La ventaja es real?</h3>
+    <div class="tarjeta" id="confianza"></div>
+
+    <h3 class="seccion">Proyección: futuros posibles de la banca</h3>
+    <div class="tarjeta">
+      <p class="ayuda" id="proyeccion-ayuda"></p>
+      <div class="kpis" id="proyeccion-kpis"></div>
+      <div class="leyenda">
+        <span><i class="muestra" style="border-color:var(--serie-1)"></i>Real</span>
+        <span><i class="muestra rayada" style="border-color:var(--serie-1)"></i>Lo más probable</span>
+        <span><i class="muestra caja" style="background:color-mix(in srgb, var(--serie-1) 30%, transparent)"></i>1 de cada 2 futuros</span>
+        <span><i class="muestra caja" style="background:color-mix(in srgb, var(--serie-1) 13%, transparent)"></i>9 de cada 10 futuros</span>
+        <span><i class="muestra rayada" style="border-color:var(--tenue)"></i>Objetivo</span>
+        <span><i class="muestra" style="border-color:var(--eje)"></i>Punto de partida</span>
+      </div>
+      <div class="grafica"><canvas id="abanico" role="img" aria-label="Proyección de la banca: rango de futuros posibles por día"></canvas></div>
+      <div class="semanas" id="prob-semanas" style="margin-top:14px"></div>
+    </div>
+
+    <h3 class="seccion">Caídas, rachas y suerte</h3>
+    <div class="kpis" id="riesgo-kpis"></div>
+
+    <h3 class="seccion">El cerebro: cuánto de la ventaja que veo es real</h3>
+    <div class="tarjeta">
+      <p class="ayuda" id="cerebro-ayuda"></p>
+      <div class="tabla" id="cerebro"></div>
+    </div>
+
+    <h3 class="seccion">Exposición: dinero en juego</h3>
+    <div class="tarjeta">
+      <div class="kpis" id="exposicion-kpis"></div>
+      <div class="tabla" id="exposicion" style="margin-top:12px"></div>
+    </div>
+
+    <h3 class="seccion">Salud de las cuentas en las casas</h3>
+    <div class="tarjeta">
+      <p class="ayuda">En la vida real, las casas comunes limitan a quien les gana al cierre de forma constante, no a quien gana dinero. Si una casa
+        "ya te habría limitado", el simulador solo apuesta ahí montos chicos, como pasaría de verdad.</p>
+      <div class="tabla" id="cuentas"></div>
+    </div>
+  </section>
+
   <section data-panel="laboratorio" hidden>
     <div class="tarjeta">
       <p class="ayuda" style="margin:0">Cada estrategia apuesta con su propia banca de $100,000 sobre los mismos momios. El ranking se ordena por
-        <b>CLV</b> (si conseguimos mejores momios que el mercado al cierre), que muestra antes que la ganancia si un método funciona.
-        Cada semana: si una retadora le gana claramente a la Principal, la Principal adopta sus reglas; las que pierden se retiran y nacen variantes nuevas.</p>
+        la <b>ventaja real estimada</b>: el CLV (si conseguimos mejores momios que el mercado al cierre) corregido por suerte. Con muchas
+        estrategias compitiendo, alguna va a destacar por casualidad; por eso el CLV de cada una se "encoge" hacia cero mientras tenga pocas apuestas.
+        Cada semana: si una retadora es mejor que la Principal con 95% de probabilidad, la Principal adopta sus reglas; las que pierden se retiran y nacen variantes nuevas.</p>
     </div>
     <h3 class="seccion">Evidencia histórica (fútbol)</h3>
     <div class="tarjeta">
@@ -395,14 +446,199 @@ function heroe(d) {
 }
 
 function kpis(d) {
-  const r = d.resumen;
+  const r = d.resumen, rg = d.riesgo || {}, pr = rg.proyeccion, cf = rg.confianza || {}, cd = rg.caidas;
+  const aRiesgo = t => `<a href="#riesgo" style="color:inherit">${t}</a>`;
   $('#kpis').innerHTML = [
     kpi('📈', 'Rendimiento', conSigno(r.rendimiento, spct(r.rendimiento)), `sobre ${dinero.format(r.apostado)} apostados`),
-    kpi('🧭', 'CLV promedio', conSigno(r.clv, spct(r.clv)), `objetivo ≥ ${spct(d.clv_objetivo)} · ${r.clv_n} medidas`),
+    kpi('🧭', 'CLV promedio', conSigno(r.clv, spct(r.clv)), `objetivo ≥ ${spct(d.clv_objetivo)} · ${r.clv_n} medidas` +
+      (r.gana_cierre != null ? ` · le gana al cierre ${pct(r.gana_cierre, 0)}` : '')),
+    kpi('🔬', aRiesgo('Ventaja real'), cf.p_ventaja == null ? '—' : pct(cf.p_ventaja, 0), cf.p_ventaja == null
+      ? 'aparece con el CLV medido' : `probabilidad de que no sea suerte · ${probChip(cf.p_ventaja)}`),
+    kpi('🎲', aRiesgo('Prob. de cumplir la meta'), pr ? pct(pr.prob_meta, 0) : '—',
+      pr ? `según ${pr.simulaciones.toLocaleString('es-MX')} futuros simulados` : 'aparece con las primeras apuestas'),
+    kpi('🧯', aRiesgo('Caída máxima'), cd && cd.n ? `<span class="${cd.maxima_pct > 0 ? 'malo' : ''}">${spct(-cd.maxima_pct)}</span>` : '—',
+      cd && cd.n ? `desde el punto más alto · peor racha ${cd.peor_racha}` : 'sin apuestas terminadas'),
     kpi('🎯', 'Acierto', pct(r.acierto), `${r.ganadas} de ${r.liquidadas} liquidadas`),
     kpi('🎟️', 'Apuestas activas', r.abiertas, `${dinero.format(r.en_juego)} en juego`),
     kpi('💵', 'Disponible', dinero.format(d.disponible), 'para nuevas apuestas'),
   ].join('');
+}
+
+const probChip = p => p == null ? '<span class="chip">Sin datos</span>'
+  : p >= 0.95 ? '<span class="chip bueno">✓ Comprobada</span>' : p >= 0.75 ? '<span class="chip azul">Indicio</span>'
+  : p <= 0.25 ? '<span class="chip malo">✗ Sin ventaja</span>' : '<span class="chip">Incierta</span>';
+const cantidad = x => x == null ? '—' : x >= 100000 ? 'más de 100 mil' : x.toLocaleString('es-MX');
+const puntos = v => v == null ? '—' : `${v > 0 ? '+' : v < 0 ? '−' : ''}${Math.abs(v * 100).toFixed(1)} pts`;
+
+function riesgoVista(d) {
+  const r = d.riesgo;
+  if (!r) { $('#confianza').innerHTML = '<div class="vacio">Todavía no hay datos de riesgo.</div>'; return; }
+  confianzaVista(d); proyeccionVista(d); riesgoKpis(r); cerebroVista(d); exposicionVista(r); cuentasVista(r);
+}
+
+function confianzaVista(d) {
+  const c = d.riesgo.confianza;
+  if (!c || !c.n) { $('#confianza').innerHTML = '<div class="vacio">Aparece cuando la Principal tenga apuestas con CLV medido.</div>'; return; }
+  const p = c.p_ventaja ?? 0.5;
+  const color = p >= 0.75 ? 'var(--bueno)' : p <= 0.25 ? 'var(--malo)' : 'var(--serie-1)';
+  const activas = d.laboratorio.filter(e => e.rol !== 'retirada').length;
+  $('#confianza').innerHTML = `
+    <div class="heroe-cabeza">
+      <div style="min-width:0">
+        <div class="etiqueta">Probabilidad de que la ventaja de la Principal sea real (no suerte)</div>
+        <div class="cifra">${pct(p, 0)}</div>${probChip(p)}
+        <div class="barra-progreso" style="max-width:420px"><i style="width:${(p * 100).toFixed(1)}%;background:${color}"></i></div>
+        <div class="chica">50% = no se distingue de la suerte · 95% o más = comprobada. Ya descuenta la suerte de tener ${activas} estrategias compitiendo.</div>
+      </div>
+      <div class="meta">
+        <div class="etiqueta">Ventaja real estimada</div>
+        <div style="font-size:20px;font-weight:700;margin-top:2px">${conSigno(c.ventaja, spct(c.ventaja, 2))}</div>
+        <div class="chica">El CLV medido (${spct(c.media, 2)}) encogido hacia cero mientras haya pocas apuestas: así una buena racha corta no engaña.</div>
+      </div>
+    </div>
+    <div class="kpis" style="margin-top:16px">
+      ${kpi('🧭', 'CLV promedio', conSigno(c.media, spct(c.media)), `rango probable (95%): ${spct(c.ic[0])} a ${spct(c.ic[1])}`)}
+      ${kpi('🏁', 'Le gana al cierre', pct(c.gana_cierre, 0), `de ${c.n} apuestas medidas · un profesional ronda 55–60%`)}
+      ${kpi('📐', 'Estadístico t', c.t.toFixed(1), 't ≥ 2 = ventaja comprobada')}
+      ${kpi('⏳', 'Faltan para comprobarlo', c.faltan_clv == null ? '—' : cantidad(c.faltan_clv),
+        c.faltan_clv == null ? 'sin ventaja medida todavía' : `apuestas con CLV · con la pura ganancia: ${cantidad(c.faltan_ganancia)}`)}
+    </div>`;
+}
+
+let graficaAbanico = null;
+function proyeccionVista(d) {
+  const p = d.riesgo.proyeccion;
+  if (!p) {
+    $('#proyeccion-ayuda').textContent = 'La proyección aparece con las primeras apuestas de la Principal y mientras dure el periodo.';
+    $('#proyeccion-kpis').innerHTML = ''; $('#prob-semanas').innerHTML = ''; return;
+  }
+  const ultima = d.semanas[d.semanas.length - 1];
+  $('#proyeccion-ayuda').innerHTML = `Simulé ${p.simulaciones.toLocaleString('es-MX')} futuros posibles de la banca hasta el día ${p.dias.at(-1)}
+    con el ritmo de la Principal (${p.ritmo.toFixed(1)} apuestas al día), sus momios, sus montos y su ventaja estimada
+    (${spct(p.ventaja, 2)}, con su incertidumbre). El abanico muestra por dónde pasarían esos futuros.
+    ${p.propias < 20 ? '<b>Con pocas apuestas propias la proyección es muy incierta</b> (se completa con apuestas parecidas del laboratorio).' : ''}`;
+  $('#proyeccion-kpis').innerHTML = [
+    kpi('🎯', 'Prob. de cumplir la meta', pct(p.prob_meta, 0), `meta: ${dinero.format(ultima.banca_objetivo)} (${spct(ultima.objetivo, 1)})`),
+    kpi('📉', 'Prob. de terminar en pérdida', pct(p.prob_perdida, 0), 'banca final menor a la inicial'),
+    kpi('🧯', 'Prob. de caer 10% o más', pct(p.prob_caida_10, 0), `en algún momento · 20% o más: ${pct(p.prob_caida_20, 0)}`),
+    kpi('💰', 'Banca más probable', dinero.format(p.mediana), `9 de cada 10 futuros: ${dinero.format(p.rango[0])} a ${dinero.format(p.rango[1])}`),
+  ].join('');
+  $('#prob-semanas').innerHTML = p.prob_semanas.map(s => `<div class="tarjeta semana">
+      <div class="fila"><b>Semana ${s.semana}</b><span class="chip">${spct(s.objetivo, 2)}</span></div>
+      <div class="chica">Probabilidad de estar en el objetivo al cerrar la semana</div>
+      <div class="grande" style="margin-top:6px">${pct(s.prob, 0)}</div>
+      <div class="barra-progreso"><i style="width:${(s.prob * 100).toFixed(1)}%"></i></div>
+    </div>`).join('');
+  dibujarAbanico(d);
+}
+
+function dibujarAbanico(d) {
+  const p = d.riesgo?.proyeccion;
+  if (!window.Chart || !p) return;
+  const k = colores(), ini = d.banca_inicial;
+  const serie = q => [{ x: p.desde, y: p.banca }, ...p.dias.map((x, i) => ({ x, y: p[q][i] }))];
+  const maxDia = Math.max(28, p.dias.at(-1));
+  const valores = [...p.p5, ...p.p95, ...d.curva.real.map(x => x.y), ...d.curva.objetivo.map(x => x.y)];
+  const desvio = Math.max(ini * 0.01, ...valores.map(v => Math.abs(v - ini)));
+  const banda = (label, q, fill, alfa) => ({ label, data: serie(q), borderWidth: 0, pointRadius: 0, pointHitRadius: 8,
+    fill, backgroundColor: fill ? `color-mix(in srgb, ${k.s1} ${alfa}%, transparent)` : undefined });
+  const conjuntos = [
+    { label: 'Punto de partida', data: [{ x: 0, y: ini }, { x: maxDia, y: ini }], borderColor: k.eje, borderWidth: 1.5, pointRadius: 0 },
+    banda('p95', 'p95', '+1', 13), banda('p5', 'p5', false), banda('p75', 'p75', '+1', 30), banda('p25', 'p25', false),
+    { label: 'Lo más probable', data: serie('p50'), borderColor: k.s1, borderDash: [5, 4], borderWidth: 2, pointRadius: 0, pointHitRadius: 8 },
+    { label: 'Objetivo', data: d.curva.objetivo, borderColor: k.tenue, borderDash: [6, 4], borderWidth: 2, pointRadius: 0, pointHitRadius: 8 },
+    { label: 'Real', data: d.curva.real, borderColor: k.s1, borderWidth: 2.5, pointRadius: 0, pointHitRadius: 8,
+      pointHoverRadius: 5, pointHoverBorderWidth: 2, pointHoverBorderColor: k.sup },
+  ];
+  const opciones = {
+    responsive: true, maintainAspectRatio: false, animation: false,
+    interaction: { mode: 'x', intersect: false },
+    plugins: { legend: { display: false }, tooltip: {
+      filter: i => ['Real', 'Lo más probable', 'Objetivo'].includes(i.dataset.label),
+      callbacks: {
+        title: it => it.length ? `Día ${Math.floor(it[0].parsed.x)}` : '',
+        label: i => ` ${i.dataset.label}: ${dinero.format(i.parsed.y)}`,
+        afterBody: it => {
+          const j = it.length ? p.dias.indexOf(Math.round(it[0].parsed.x)) : -1;
+          return j < 0 ? [] : [`1 de cada 2 futuros: ${dinero.format(p.p25[j])} a ${dinero.format(p.p75[j])}`,
+            `9 de cada 10 futuros: ${dinero.format(p.p5[j])} a ${dinero.format(p.p95[j])}`];
+        } } } },
+    scales: {
+      x: { type: 'linear', min: 0, max: maxDia, grid: { display: false }, border: { color: k.reticula },
+           ticks: { stepSize: 7, color: k.tenue, callback: v => `Día ${v}` } },
+      y: { suggestedMin: ini - desvio * 1.1, suggestedMax: ini + desvio * 1.1, grid: { color: k.reticula }, border: { display: false },
+           ticks: { color: k.tenue, callback: v => dinero.format(v) } },
+    },
+  };
+  if (graficaAbanico) { graficaAbanico.data.datasets = conjuntos; graficaAbanico.options = opciones; graficaAbanico.update(); return; }
+  graficaAbanico = new Chart($('#abanico'), { type: 'line', data: { datasets: conjuntos }, options: opciones });
+}
+
+function riesgoKpis(r) {
+  const c = r.caidas, s = r.suerte;
+  const racha = c.racha > 0 ? `${c.racha} ganada${c.racha > 1 ? 's' : ''} seguida${c.racha > 1 ? 's' : ''}`
+    : c.racha < 0 ? `${-c.racha} perdida${c.racha < -1 ? 's' : ''} seguida${c.racha < -1 ? 's' : ''}` : '—';
+  $('#riesgo-kpis').innerHTML = [
+    kpi('🧯', 'Caída máxima', c.n ? `<span class="${c.maxima_pct > 0 ? 'malo' : ''}">${spct(-c.maxima_pct)}</span>` : '—',
+      c.n ? `${dinero.format(c.maxima)} desde el punto más alto de la banca` : 'sin apuestas terminadas'),
+    kpi('📍', 'Caída actual', c.n ? `<span class="${c.actual_pct > 0 ? 'malo' : 'bueno'}">${c.actual_pct > 0 ? spct(-c.actual_pct) : 'En su máximo'}</span>` : '—',
+      c.actual_pct > 0 ? `${c.desde_pico} apuestas desde el punto más alto` : 'la banca está en su punto más alto'),
+    kpi('🔁', 'Peor racha', `${c.peor_racha} <span class="chica">pérdidas seguidas</span>`, `racha actual: ${racha}`),
+    kpi('🍀', 'Suerte', s ? conSigno(s.suerte, sdinero(s.suerte)) : '—', s
+      ? `${s.ganadas} ganadas de ${s.n}; se esperaban ${s.esperadas.toFixed(1)} · ${s.z > 1 ? 'más suerte de lo normal' : s.z < -1 ? 'menos suerte de lo normal' : 'dentro de lo normal'}`
+      : 'aparece con apuestas terminadas'),
+    kpi('🛑', 'Freno por caída', r.freno.activo ? '<span class="malo">Activado</span>' : '<span class="bueno">Apagado</span>',
+      `si la banca cae ${pct(r.freno.umbral, 0)} desde su máximo, los montos bajan al ${pct(r.freno.factor, 0)}`),
+  ].join('');
+}
+
+function cerebroVista(d) {
+  const b = d.cerebro;
+  if (!b) { $('#cerebro').innerHTML = ''; return; }
+  $('#cerebro-ayuda').innerHTML = `De cada <b>1%</b> de valor que el bot ve al apostar, el precio de cierre confirma <b>${b.factor.toFixed(2)}%</b>.
+    Arrancó en ${b.previo.toFixed(2)}% por la prueba histórica y se corrige con cada apuesta medida (${b.n_factor} hasta ahora).
+    Por eso apuesta según la ventaja que estima, no la que ve a simple vista, y no apuesta donde no ve ventaja real.
+    Abajo, las situaciones que suman o restan ventaja: cada efecto empieza en cero y solo crece cuando muchas apuestas lo respaldan.`;
+  const maximo = Math.max(0.005, ...b.efectos.map(e => Math.abs(e.efecto)));
+  const barra = v => {
+    const ancho = Math.min(50, Math.abs(v) / maximo * 50);
+    return `<div class="clv-barra"><i style="${v >= 0 ? `left:50%;width:${ancho}%;background:var(--bueno)` : `right:50%;width:${ancho}%;background:var(--malo)`}"></i></div>`;
+  };
+  $('#cerebro').innerHTML = tabla([
+    { t: 'Situación', v: e => `<b>${esc(e.nivel)}</b><div class="chica">${esc(e.dimension)}</div>` },
+    { t: 'Apuestas', num: 1, v: e => e.n },
+    { t: 'Efecto en la ventaja', num: 1, v: e => `${conSigno(e.efecto, puntos(e.efecto))}${barra(e.efecto)}` },
+    { t: 'Lectura', num: 1, v: e => Math.abs(e.efecto) < 0.002 ? '<span class="chip">≈ Neutral</span>'
+        : e.efecto > 0 ? '<span class="chip bueno">Suma ventaja</span>' : '<span class="chip malo">Resta ventaja</span>' },
+  ], b.efectos, 'El mapa aparece cuando haya apuestas con CLV medido.');
+}
+
+function exposicionVista(r) {
+  const e = r.exposicion;
+  $('#exposicion-kpis').innerHTML = [
+    kpi('🎟️', 'En juego', dinero.format(e.total), `${pct(e.pct, 1)} de la banca · tope ${pct(r.max_exposicion, 0)}`),
+    kpi('📌', 'Apuesta más grande', dinero.format(e.max_partido), `${e.apuestas} apuestas abiertas`),
+    kpi('🧩', 'Concentración', e.por_liga.length ? pct(e.concentracion, 0) : '—',
+      e.por_liga.length ? `del dinero en juego está en ${esc(e.por_liga[0].liga)}` : 'sin apuestas abiertas'),
+  ].join('');
+  $('#exposicion').innerHTML = tabla([
+    { t: 'Día del partido', v: x => new Date(x.dia + 'T12:00:00').toLocaleDateString('es-MX', { weekday: 'short', day: '2-digit', month: 'short' }) },
+    { t: 'Apuestas', num: 1, v: x => x.apuestas },
+    { t: 'En juego', num: 1, v: x => dinero.format(x.monto) },
+  ], e.por_dia, 'No hay dinero en juego.');
+}
+
+function cuentasVista(r) {
+  const estados = { normal: '<span class="chip bueno">● Normal</span>', vigilada: '<span class="chip azul">● Te estaría vigilando</span>',
+    limitada: '<span class="chip malo">● Ya te habría limitado</span>' };
+  $('#cuentas').innerHTML = tabla([
+    { t: 'Casa', v: c => `<b>${esc(c.casa)}</b>` },
+    { t: 'Apuestas', num: 1, v: c => c.apuestas },
+    { t: 'Apostado', num: 1, v: c => dinero.format(c.apostado) },
+    { t: 'CLV', num: 1, v: c => `${conSigno(c.clv, spct(c.clv))}<div class="chica">${c.clv_n} medidas</div>` },
+    { t: 'Le gana al cierre', num: 1, v: c => pct(c.gana_cierre, 0) },
+    { t: 'Estado', num: 1, v: c => estados[c.estado] },
+  ], r.cuentas, 'Todavía no hay apuestas.');
 }
 
 function colores() {
@@ -547,7 +783,7 @@ function boletos(d) {
       <div class="boleto-pie">
         <div>Monto<b>${dinero.format(a.monto)}</b></div>
         <div>Ganaría<b>${dinero.format(a.potencial)}</b></div>
-        <div>Valor<b>${conSigno(a.valor, spct(a.valor))}</b></div>
+        <div title="Valor contra el precio justo; abajo, la ventaja real que estimó el cerebro">Valor<b>${conSigno(a.valor, spct(a.valor))}</b>${a.ventaja != null ? `cerebro ${spct(a.ventaja)}` : ''}</div>
         <div>Mercado<b>${a.movimiento == null ? '<span class="tenue">—</span>' : conSigno(a.movimiento, spct(a.movimiento))}</b></div>
       </div>
     </article>`;
@@ -577,7 +813,9 @@ function historial(d) {
 
 function laboratorio(d) {
   const roles = { principal: 'Principal', retadora: 'Retadora', experimento: '🆓 Experimento DK', control: 'Control', retirada: 'Retirada' };
-  const orden = [...d.laboratorio].sort((a, b) => (b.clv ?? -9) - (a.clv ?? -9) || (b.ganancia - a.ganancia));
+  // Orden por la ventaja real estimada (CLV ya corregido por suerte); sin medidas, al final
+  const ventaja = e => e.confianza?.ventaja ?? (e.clv == null ? -9 : e.clv);
+  const orden = [...d.laboratorio].sort((a, b) => ventaja(b) - ventaja(a) || (b.ganancia - a.ganancia));
   const maximo = Math.max(0.02, ...orden.map(e => Math.abs(e.clv || 0)));
   const barra = v => {
     if (v == null) return '<div class="clv-barra"></div>';
@@ -589,7 +827,14 @@ function laboratorio(d) {
     { t: 'Estrategia', v: e => `<a href="#laboratorio" data-ver="${esc(e.nombre)}" style="color:var(--tinta);font-weight:700">${esc(e.nombre)} ›</a>
         <span class="insignia ${e.rol}">${roles[e.rol]}</span><div class="chica">${esc(e.descripcion)}</div>` +
         ((e.parametros.ligas_bloqueadas || []).length ? `<div class="chica">Evita: ${esc(e.parametros.ligas_bloqueadas.join(', '))}</div>` : '') },
-    { t: 'CLV', num: 1, v: e => `${conSigno(e.clv, spct(e.clv))}<div class="chica">${e.clv_n} medidas</div>${barra(e.clv)}` },
+    { t: 'CLV', num: 1, v: e => `${conSigno(e.clv, spct(e.clv))}<div class="chica">${e.clv_n} medidas` +
+        (e.gana_cierre != null ? ` · gana al cierre ${pct(e.gana_cierre, 0)}` : '') + `</div>${barra(e.clv)}` },
+    { t: 'Ventaja real', num: 1, v: e => {
+        const c = e.confianza;
+        if (!c || c.p_ventaja == null) return '<span class="tenue">—</span>';
+        return `${pct(c.p_ventaja, 0)} ${probChip(c.p_ventaja)}<div class="chica">estimada ${spct(c.ventaja, 2)}` +
+          (c.faltan_clv ? ` · faltan ${cantidad(c.faltan_clv)}` : '') + '</div>';
+      } },
     { t: 'Apuestas', num: 1, v: e => `${e.apuestas}${e.abiertas ? `<div class="chica">${e.abiertas} activas</div>` : ''}` },
     { t: 'Rendimiento', num: 1, v: e => conSigno(e.rendimiento, spct(e.rendimiento)) },
     { t: 'Origen', num: 1, v: e => {
@@ -604,6 +849,12 @@ function laboratorio(d) {
   ], d.calibracion, 'Aparece cuando los partidos pronosticados tengan resultado.');
   if (d.calibracion_partidos) $('#calibracion').insertAdjacentHTML('beforeend',
     `<div class="chica" style="margin-top:10px">Basada en ${d.calibracion_partidos.toLocaleString('es-MX')} partidos pronosticados con resultado (se haya apostado o no).</div>`);
+  const q = d.calidad_pronosticos;
+  if (q) $('#calibracion').insertAdjacentHTML('beforeend', `<div class="kpis" style="margin-top:14px">
+    ${kpi('🎯', 'Puntaje Brier', q.brier.toFixed(3), `menor = mejor · adivinar con la frecuencia: ${q.brier_base.toFixed(3)}`)}
+    ${kpi('🧠', 'Habilidad', conSigno(q.habilidad, spct(q.habilidad, 0)), 'cuánto mejor pronostica el precio justo que adivinar')}
+    ${kpi('📏', 'Pérdida logarítmica', q.perdida_log.toFixed(3), `${q.partidos.toLocaleString('es-MX')} partidos · menor = mejor`)}
+  </div>`);
   detalleEstrategia(d);
 }
 
@@ -694,7 +945,7 @@ function diarioVista(d) {
 }
 
 function bitacora(d) {
-  const iconos = { inicio: '🚀', semana: '📅', ajuste: '🎯', promocion: '🏆', retiro: '⛔', nueva: '🧪', aprendizaje: '🧠', sistema: '⚙️' };
+  const iconos = { inicio: '🚀', semana: '📅', ajuste: '🎯', promocion: '🏆', retiro: '⛔', nueva: '🧪', aprendizaje: '🧠', sistema: '⚙️', riesgo: '🛡️' };
   $('#bitacora').innerHTML = d.bitacora.map(b => `<li><div class="icono">${iconos[b.tipo] || '•'}</div>
     <div><div class="chica">${fecha(b.fecha)} · ${esc(b.tipo)}</div><div>${esc(b.mensaje)}</div></div></li>`).join('')
     || '<li><div></div><div class="vacio">Sin entradas todavía.</div></li>';
@@ -710,6 +961,7 @@ function sistema(d) {
   $('#subtitulo').textContent = `Día ${d.dia} de la simulación · banca ficticia, momios reales`;
   $('#sistema').innerHTML = [
     'Cada 15 min el bot decide si conviene gastar créditos (partidos próximos, momios viejos, historial de la liga) o seguir analizando gratis; marcadores en vivo vía ESPN.',
+    `Realismo: cada momio se cuenta ${pct(d.config_riesgo?.deslizamiento_base ?? 0.003, 1)} o más abajo del publicado (el precio se mueve al apostar), con topes por casa, cuentas que se limitan y máximo ${pct(d.config_riesgo?.max_exposicion ?? 0.25, 0)} de la banca en juego.`,
     `Próxima revisión de aprendizaje: ${s.proxima_revision ? fecha(s.proxima_revision) : '—'} · Inicio de la simulación: ${fecha(d.inicio)}`,
     `Última actualización del bot: ${s.ultimo_ciclo ? fecha(s.ultimo_ciclo) : '—'}`,
   ].join('<br>');
@@ -718,7 +970,8 @@ function sistema(d) {
 function pintar() {
   if (!datos) return;
   heroe(datos); kpis(datos); semanas(datos); deportes(datos); creditos(datos); dibujarCurva(datos);
-  boletos(datos); historial(datos); laboratorio(datos); evidencia(datos); diarioVista(datos); bitacora(datos); sistema(datos);
+  boletos(datos); historial(datos); riesgoVista(datos); laboratorio(datos); evidencia(datos); diarioVista(datos); bitacora(datos);
+  sistema(datos);
 }
 
 async function actualizar() {
@@ -743,6 +996,7 @@ function mostrar(pestana) {
   document.querySelectorAll('.pestanas button').forEach(b => b.classList.toggle('activa', b.dataset.pestana === pestana));
   document.querySelectorAll('[data-panel]').forEach(p => p.hidden = p.dataset.panel !== pestana);
   if (pestana === 'resumen') { grafica?.resize(); graficaCreditos?.resize(); }
+  if (pestana === 'riesgo') graficaAbanico?.resize();
   history.replaceState(null, '', '#' + pestana);
 }
 document.querySelectorAll('.pestanas button').forEach(b => b.addEventListener('click', () => mostrar(b.dataset.pestana)));
@@ -759,7 +1013,7 @@ document.querySelectorAll('#filtro-origen button').forEach(b => b.addEventListen
 
 function aplicarTema(tema) {
   if (tema) document.documentElement.dataset.theme = tema; else delete document.documentElement.dataset.theme;
-  datos && (dibujarCurva(datos), creditos(datos));
+  datos && (dibujarCurva(datos), creditos(datos), dibujarAbanico(datos));
 }
 $('#tema').addEventListener('click', () => {
   const oscuro = getComputedStyle(document.documentElement).colorScheme.includes('dark');
@@ -768,7 +1022,7 @@ $('#tema').addEventListener('click', () => {
   aplicarTema(tema);
 });
 try { aplicarTema(localStorage.getItem('tema')); } catch (e) {}
-matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => datos && (dibujarCurva(datos), creditos(datos)));
+matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => datos && (dibujarCurva(datos), creditos(datos), dibujarAbanico(datos)));
 
 if (ESTATICO) $('#buscar').hidden = true;
 // Las acciones corren el bot en GitHub: el enlace lleva a la página del workflow del repositorio
@@ -786,7 +1040,7 @@ $('#buscar').addEventListener('click', async () => {
 
 const desdeEnlace = () => {
   const p = location.hash.slice(1);
-  if (['resumen', 'apuestas', 'laboratorio', 'diario', 'bitacora'].includes(p)) mostrar(p);
+  if (['resumen', 'apuestas', 'riesgo', 'laboratorio', 'diario', 'bitacora'].includes(p)) mostrar(p);
 };
 addEventListener('hashchange', desdeEnlace);
 desdeEnlace();

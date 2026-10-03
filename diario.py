@@ -7,6 +7,8 @@ la de ayer con sus últimos resultados.
 import json
 from datetime import date, datetime, time, timedelta
 
+import cerebro
+import riesgo
 from aprendizaje import calibracion_pronosticos, estadistica
 from base_datos import a_fecha, ahora, guardar_estado, iso, leer_estado
 
@@ -130,6 +132,14 @@ def escribir(con, config: dict, dia: date | None = None) -> None:
     secciones.append({"titulo": "Lo que estoy aprendiendo", "parrafos": aprendo or [
         "Todavía no tengo suficientes datos medidos para sacar conclusiones."]})
 
+    if dia == date.today():
+        try:
+            riesgo_texto = _riesgo(con, config)
+        except Exception as e:  # el diario no debe fallar por una sección
+            riesgo_texto = [f"No pude calcular el riesgo en esta vuelta ({e!r})."]
+        if riesgo_texto:
+            secciones.append({"titulo": "Riesgo y confianza", "parrafos": riesgo_texto})
+
     opinion = []
     terminadas = con.execute("""SELECT COUNT(*) FROM apuestas WHERE estrategia = 'Principal'
                                 AND estado IN ('ganada', 'perdida')""").fetchone()[0]
@@ -171,6 +181,48 @@ def escribir(con, config: dict, dia: date | None = None) -> None:
                    ON CONFLICT(dia) DO UPDATE SET texto = excluded.texto, actualizado = excluded.actualizado""",
                 (dia.isoformat(), json.dumps(secciones, ensure_ascii=False), iso(ahora())))
     con.commit()
+
+
+def _riesgo(con, config: dict) -> list[str]:
+    """Lo que un profesional revisa cada día además del CLV: si la ventaja es real, cuánto puede caer y qué esperar."""
+    datos = riesgo.panel(con, config)
+    textos = []
+    c, s, pr = datos["confianza"], datos["suerte"], datos["proyeccion"]
+    if c.get("n"):
+        texto = (f"Probabilidad de que mi ventaja sea real: {c['p_ventaja']:.0%} (ya descontada la suerte de tener "
+                 f"muchas estrategias compitiendo). Le gano al cierre en {c['gana_cierre']:.0%} de mis apuestas medidas "
+                 f"(un profesional ronda 55% a 60%).")
+        cantidad = lambda x: "más de 100,000" if x >= riesgo.TOPE_FALTAN else f"unas {x:,}"
+        if c["faltan_clv"] is not None:
+            texto += (f" Si mi CLV se mantiene en {c['media']:+.1%}, para comprobarlo (95%) me faltan "
+                      f"{cantidad(c['faltan_clv'])} apuestas medidas")
+            texto += (f"; con la pura ganancia harían falta {cantidad(c['faltan_ganancia'])}, por eso me guío por el CLV."
+                      if c["faltan_ganancia"] else ".")
+        textos.append(texto)
+    k = datos["caidas"]
+    if k["n"]:
+        textos.append(f"Mi peor caída ha sido {k['maxima_pct']:.1%} (${k['maxima']:,.0f}); hoy estoy {k['actual_pct']:.1%} "
+                      f"debajo de mi mejor punto. Peor racha: {k['peor_racha']} pérdidas seguidas."
+                      + (" Tengo el freno puesto: apuesto la mitad hasta recuperarme." if datos["freno"]["activo"] else ""))
+    if s:
+        lectura = ("tuve más suerte de lo normal" if s["z"] > 1 else "tuve menos suerte de lo normal" if s["z"] < -1
+                   else "la diferencia es la suerte de todos los días")
+        textos.append(f"Suerte: gané {s['ganadas']} de {s['n']} apuestas cuando lo esperado era {s['esperadas']:.1f}; "
+                      f"mi ganancia real es ${s['ganancia']:+,.0f} contra ${s['esperada']:+,.0f} esperados: {lectura}.")
+    if pr:
+        textos.append(f"Simulé {pr['simulaciones']:,} futuros de la banca con mi ritmo ({pr['ritmo']:.1f} apuestas al día) y "
+                      f"mi ventaja estimada ({pr['ventaja']:+.2%}): probabilidad de cumplir la meta de "
+                      f"{len(config['objetivos_semana'])} semanas {pr['prob_meta']:.0%}, de terminar en pérdida "
+                      f"{pr['prob_perdida']:.0%}; lo más probable es terminar con ${pr['mediana']:,.0f}.")
+    mente = cerebro.Cerebro(con, config)
+    textos.append(f"Mi cerebro: de cada 1% de valor que veo, el cierre confirma {mente.factor:.2f}%, así que apuesto con "
+                  f"la ventaja que estimo, no con la que veo a simple vista.")
+    alerta = [x for x in datos["cuentas"] if x["estado"] != "normal"]
+    if alerta:
+        textos.append("Cuentas en las casas: " + ", ".join(
+            f"{x['casa']} {'ya me habría limitado' if x['estado'] == 'limitada' else 'me estaría vigilando'}" for x in alerta)
+                      + ". En la vida real hay que repartir las apuestas entre varias casas.")
+    return textos
 
 
 def actualizar(con, config: dict) -> None:

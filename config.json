@@ -27,6 +27,32 @@
   "estudio": {
     "dias_entre_estudios": 7
   },
+  "ejecucion": {
+    "deslizamiento_base": 0.003,
+    "deslizamiento_por_minuto": 0.0003,
+    "deslizamiento_max": 0.02,
+    "limite_apuesta": 20000,
+    "limite_apuesta_liga_menor": 5000,
+    "limite_cuenta_limitada": 300,
+    "ligas_mayores": [
+      "soccer_epl", "soccer_spain_la_liga", "soccer_germany_bundesliga", "soccer_italy_serie_a",
+      "soccer_france_ligue_one", "soccer_uefa_champs_league", "soccer_uefa_europa_league", "soccer_mexico_ligamx",
+      "basketball_nba", "americanfootball_nfl", "americanfootball_ncaaf", "baseball_mlb", "icehockey_nhl",
+      "mma_mixed_martial_arts"
+    ]
+  },
+  "riesgo": {
+    "max_exposicion": 0.25,
+    "freno_caida": 0.10,
+    "factor_freno": 0.5,
+    "simulaciones": 2000
+  },
+  "cerebro": {
+    "factor_previo": 0.5,
+    "factor_previo_max": 0.8,
+    "fuerza_previa": 20,
+    "suavizado": 25
+  },
   "horas_ventana": 72,
   "horas_min_entre_descargas": 1.5,
   "minutos_captura_cierre": 90,
@@ -46,7 +72,9 @@
     "min_apuestas_clv_promocion": 40,
     "min_apuestas_clv_retiro": 80,
     "min_apuestas_filtro": 30,
-    "max_retadoras": 5,
+    "max_retadoras": 8,
+    "prob_promocion": 0.95,
+    "prob_retiro": 0.10,
     "exploracion": 0.5
   },
   "deportes_candidatos": [
