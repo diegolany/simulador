@@ -289,6 +289,7 @@ footer { margin-top: 28px; color: var(--tenue); font-size: 12.5px; line-height: 
       <button data-origen="todos" class="activo">Todos los orígenes</button>
       <button data-origen="creditos">💳 Créditos</button>
       <button data-origen="draftkings">🆓 DraftKings</button>
+      <button data-origen="caliente">🇲🇽 Caliente</button>
       <span class="chica" id="reparto-origen" style="align-self:center"></span>
     </div>
     <div class="boletos" id="activas"></div>
@@ -799,8 +800,11 @@ function boletos(d) {
   const lista = d.activas.filter(a => deEstrategia(a) && deOrigen(a));
   // Reparto por origen de todas las apuestas (activas y cerradas) de la estrategia elegida
   const todasEst = [...d.activas, ...d.historial.filter(h => h.estado !== 'anulada')].filter(deEstrategia);
-  const n = todasEst.length, nc = todasEst.filter(x => x.fuente !== 'draftkings').length, ng = n - nc;
-  $('#reparto-origen').textContent = n ? `💳 Créditos ${nc} (${pct(nc / n, 0)}) · 🆓 DraftKings ${ng} (${pct(ng / n, 0)})` : '';
+  const n = todasEst.length;
+  $('#reparto-origen').textContent = n ? ORIGENES.map(([clave, nombre]) => {
+    const k = todasEst.filter(x => (x.fuente || 'creditos') === clave).length;
+    return k || clave !== 'caliente' ? `${nombre} ${k} (${pct(k / n, 0)})` : '';
+  }).filter(Boolean).join(' · ') : '';
   $('#conteo-activas').textContent = d.activas.filter(a => a.estrategia === 'Principal').length || '';
   // Cuánto falta: en vivo con el reloj de ESPN (cuarto, minuto, entrada); antes del partido, la hora en que termina
   const reloj = a => {
@@ -903,8 +907,10 @@ function laboratorio(d) {
     { t: 'Apuestas', num: 1, v: e => `${e.apuestas}${e.abiertas ? `<div class="chica">${e.abiertas} activas</div>` : ''}` },
     { t: 'Rendimiento', num: 1, v: e => conSigno(e.rendimiento, spct(e.rendimiento)) },
     { t: 'Origen', num: 1, v: e => {
-        const c = e.por_origen?.creditos?.apuestas || 0, g = e.por_origen?.draftkings?.apuestas || 0, t = c + g;
-        return t ? `💳 ${c} <span class="chica">(${pct(c / t, 0)})</span><div>🆓 ${g} <span class="chica">(${pct(g / t, 0)})</span></div>` : '<span class="tenue">—</span>';
+        const k = ORIGENES.map(([clave, nombre]) => [nombre.split(' ')[0], e.por_origen?.[clave]?.apuestas || 0]);
+        const t = k.reduce((s, [, n]) => s + n, 0);
+        return t ? k.filter(([, n], i) => n || i < 2).map(([icono, n]) => `<div>${icono} ${n} <span class="chica">(${pct(n / t, 0)})</span></div>`).join('')
+          : '<span class="tenue">—</span>';
       } },
     { t: 'Banca', num: 1, v: e => `<b>${dinero.format(e.banca)}</b><div class="chica">${conSigno(e.ganancia, sdinero(e.ganancia))}</div>` },
   ], orden, '');
@@ -948,7 +954,9 @@ function evidencia(d) {
 const SIGLAS = new Set(['fc', 'cf', 'sc', 'ac', 'cd', 'sd', 'ad', 'ud', 'ca', 'ce', 'rc', 'rcd', 'fk', 'sk', 'afc', 'cfc', 'sad', 'club']);
 const nombreBusqueda = n => String(n || '').split(/\s+/).filter(p => !SIGLAS.has(p.toLowerCase().replace(/\./g, ''))).join(' ') || n;
 
-const origen = f => f === 'draftkings' ? '<span class="chip bueno" title="Momio gratuito de DraftKings (ESPN)">🆓 DraftKings</span>'
+const ORIGENES = [['creditos', '💳 Créditos'], ['draftkings', '🆓 DraftKings'], ['caliente', '🇲🇽 Caliente']];
+const origen = f => f === 'caliente' ? '<span class="chip malo" title="Momio de Caliente leído a mano en el navegador">🇲🇽 Caliente</span>'
+  : f === 'draftkings' ? '<span class="chip bueno" title="Momio gratuito de DraftKings (ESPN)">🆓 DraftKings</span>'
   : '<span class="chip azul" title="Momio de una descarga pagada con créditos">💳 Créditos</span>';
 
 let estrategiaVista = null, origenDetalle = 'todos', historiales = null, historialesHora = 0;
@@ -972,8 +980,8 @@ function detalleEstrategia(d) {
   const lista = completa.filter(h => origenDetalle === 'todos' || h.fuente === origenDetalle);
   const info = (d.laboratorio || []).find(e => e.nombre === estrategiaVista) || {};
   const po = info.por_origen || {};
-  const total = (po.creditos?.apuestas || 0) + (po.draftkings?.apuestas || 0);
-  const filasOrigen = [['💳 Créditos', po.creditos], ['🆓 DraftKings', po.draftkings]].filter(([, r]) => r)
+  const total = ORIGENES.reduce((s, [clave]) => s + (po[clave]?.apuestas || 0), 0);
+  const filasOrigen = ORIGENES.map(([clave, nombre]) => [nombre, po[clave]]).filter(([, r]) => r && r.apuestas)
     .map(([nombre, r]) => ({ nombre, ...r }));
   const resumenOrigen = tabla([
     { t: 'Origen', v: r => r.nombre },
@@ -983,7 +991,7 @@ function detalleEstrategia(d) {
     { t: 'Rendimiento', num: 1, v: r => conSigno(r.rendimiento, spct(r.rendimiento)) },
     { t: 'CLV', num: 1, v: r => conSigno(r.clv, spct(r.clv)) },
   ], filasOrigen, '');
-  const botones = [['todos', 'Todos'], ['creditos', '💳 Créditos'], ['draftkings', '🆓 DraftKings']]
+  const botones = [['todos', 'Todos'], ...ORIGENES]
     .map(([v, t]) => `<button data-origen-detalle="${v}" class="${v === origenDetalle ? 'activo' : ''}">${t}</button>`).join('');
   const res = { abierta: '<span class="chip azul">● Activa</span>', ganada: '<span class="chip bueno">✓ Ganada</span>',
     perdida: '<span class="chip malo">✗ Perdida</span>', anulada: '<span class="chip">↺ Anulada</span>' };

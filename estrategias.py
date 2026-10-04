@@ -407,15 +407,43 @@ def apostar_gratis(con, config: dict) -> dict:
     """Momios gratuitos: el de DraftKings que ESPN publica sin costo, comparado contra el último precio justo de
     Pinnacle ya descargado si tiene menos de `max_horas_referencia` horas. Cada estrategia de valor (la Principal
     y las retadoras) aplica sus mismas reglas y apuesta con su misma banca; la apuesta queda marcada como
-    DraftKings. Devuelve {estrategia: apuestas nuevas}."""
-    estrategias = [e for e in activas(con) if e["tipo"] in ("valor", "gratis")]  # gratis = experimentos DraftKings
+    DraftKings. Devuelve ({estrategia: apuestas nuevas}, resumen)."""
+    cache = {}
+
+    def precio(ev):
+        if not marcadores.cubierto_momios(ev["deporte"]):
+            return None
+        return marcadores.precios(ev["deporte"], ev["local"], ev["visitante"], a_fecha(ev["inicio"]), cache,
+                                  con_apertura=True)
+    # Un momio de DraftKings más de 4% arriba del precio justo delata una foto vieja de Pinnacle
+    return _apostar_con_precios(con, config, precio, 0, "Momio gratuito (ESPN)", config["valor_sospechoso_dk"], True)
+
+
+def apostar_externo(con, config: dict, mapa: dict, capturado: str, nota: str) -> dict:
+    """Momios de una casa sin servicio de datos (Caliente) que se leyeron a mano en el navegador.
+    `mapa` = {evento_id: {"casa": ..., "precios": {selección: momio decimal}}}. El precio se cuenta con el
+    deslizamiento de los minutos que pasaron desde que se leyó. Solo apuestan las estrategias de valor."""
+    minutos = max(0.0, (ahora() - a_fecha(capturado)).total_seconds() / 60)
+
+    def precio(ev):
+        p = mapa.get(ev["id"])
+        return (p["casa"], p["precios"], {}) if p else None
+    return _apostar_con_precios(con, config, precio, minutos, nota, config["valor_sospechoso"], False, set(mapa))
+
+
+def _apostar_con_precios(con, config: dict, obtener_precio, minutos: float, nota: str, tope_valor: float,
+                         con_experimentos: bool, eventos: set | None = None) -> dict:
+    """Compara el momio de una casa externa (obtener_precio(evento) -> (casa, precios, apertura)) contra el último
+    precio justo de Pinnacle ya descargado y deja que cada estrategia apueste con sus reglas."""
+    tipos = ("valor", "gratis") if con_experimentos else ("valor",)  # gratis = experimentos DraftKings
+    estrategias = [e for e in activas(con) if e["tipo"] in tipos]
     resumen = {"comparados": 0, "mejor": None}  # lo que vio, para explicarlo aunque no apueste
     if not estrategias:
         return {}, resumen
     momento = ahora()
     referencia = config["casa_referencia"]
     max_antiguedad = timedelta(minutes=config["max_minutos_momio"])
-    desliz = deslizamiento(config, 0)  # momio vigente según ESPN: solo el movimiento normal al apostar
+    desliz = deslizamiento(config, minutos)
     filas = con.execute(
         """SELECT e.id, e.deporte, e.liga, e.local, e.visitante, e.inicio, MAX(m.capturado) AS cap
            FROM eventos e JOIN momios m ON m.evento_id = e.id AND m.casa = ? AND m.mercado = 'h2h'
@@ -426,16 +454,18 @@ def apostar_gratis(con, config: dict) -> dict:
          iso(momento - timedelta(hours=config["max_horas_referencia"])))).fetchall()
     ya_apostadas = {(f[0], f[1]) for f in con.execute("SELECT estrategia, evento_id FROM apuestas WHERE inicio > ?",
                                                       (iso(momento),))}
-    cache, colocadas, ctx = {}, {}, None
+    colocadas, ctx = {}, None
     for ev in filas:
+        if eventos is not None and ev["id"] not in eventos:
+            continue
         pendientes = [e for e in estrategias if (e["nombre"], ev["id"]) not in ya_apostadas]
-        if not pendientes or not marcadores.cubierto_momios(ev["deporte"]):
+        if not pendientes:
             continue
         ref = {r[0]: r[1] for r in con.execute(
             "SELECT seleccion, momio FROM momios WHERE evento_id = ? AND casa = ? AND mercado = 'h2h' AND capturado = ?",
             (ev["id"], referencia, ev["cap"]))}
         inicio = a_fecha(ev["inicio"])
-        encontrado = marcadores.precios(ev["deporte"], ev["local"], ev["visitante"], inicio, cache, con_apertura=True)
+        encontrado = obtener_precio(ev)
         if len(ref) < 2 or not encontrado or set(encontrado[1]) != set(ref):
             continue  # sin precio gratuito o con otras opciones que la referencia
         casa, precios, apertura = encontrado
@@ -479,7 +509,7 @@ def apostar_gratis(con, config: dict) -> dict:
             # el "valor" es falso. Y DraftKings casi nunca paga más que el precio justo: más de 4% delata una foto vieja
             if est["tipo"] == "valor" and edad * 60 > config["max_minutos_referencia_valor"]:
                 continue
-            tope = config["valor_sospechoso_dk"] if est["tipo"] == "valor" else config["valor_sospechoso"]
+            tope = tope_valor if est["tipo"] == "valor" else config["valor_sospechoso"]
             umbral = p["umbral"] + p["umbral_margen"] * max(0.0, margen - MARGEN_EFICIENTE)
             candidatas = []
             for s in selecciones:
@@ -512,7 +542,7 @@ def apostar_gratis(con, config: dict) -> dict:
                 registrado = True
             razon = _razon_valor(casa, sel, precios[sel], momio, probs[sel], horas, monto, actual,
                                  estimada if usa_cerebro else None, ajustes, notas,
-                                 f" Momio gratuito (ESPN); precio justo de hace {edad:.1f} h."
+                                 f" {nota}; precio justo de hace {edad:.1f} h."
                                  + (f" Experimento: {est['descripcion']}." if est["tipo"] == "gratis" else ""),
                                  fijo=bool(p.get("fijo")), referencia=nombre_ref)
             _registrar(con, est, ev, sel, casa, momio, round(precios[sel], 3), ref[sel], probs[sel], monto, colocada,

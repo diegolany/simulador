@@ -16,7 +16,7 @@ CARTERAS = ("Principal",)
 
 
 def _origen(casa: str) -> str:
-    return "🆓 DraftKings" if casa == "draftkings" else "💳 Créditos"
+    return {"draftkings": "🆓 DraftKings", "caliente": "🇲🇽 Caliente"}.get(casa, "💳 Créditos")
 MOTIVOS = {"barrido": "búsquedas de momios", "cierre": "fotos de cierre", "resultados": "consultas de resultados"}
 
 
@@ -39,17 +39,17 @@ def escribir(con, config: dict, dia: date | None = None) -> None:
 
     resumen = []
     for cartera in CARTERAS:
-        nuevas, gratis = con.execute("""SELECT COUNT(*), COALESCE(SUM(casa = 'draftkings'), 0) FROM apuestas
-                                        WHERE estrategia = ? AND colocada >= ? AND colocada < ?""",
-                                     (cartera, desde, hasta)).fetchone()
+        nuevas, gratis, caliente = con.execute(
+            """SELECT COUNT(*), COALESCE(SUM(casa = 'draftkings'), 0), COALESCE(SUM(casa = 'caliente'), 0) FROM apuestas
+               WHERE estrategia = ? AND colocada >= ? AND colocada < ?""", (cartera, desde, hasta)).fetchone()
         ganadas, perdidas, ganancia = con.execute(
             """SELECT COALESCE(SUM(estado = 'ganada'), 0), COALESCE(SUM(estado = 'perdida'), 0), COALESCE(SUM(ganancia), 0)
                FROM apuestas WHERE estrategia = ? AND estado IN ('ganada', 'perdida') AND liquidada >= ? AND liquidada < ?""",
             (cartera, desde, hasta)).fetchone()
         total = con.execute("SELECT COALESCE(SUM(ganancia), 0) FROM apuestas WHERE estrategia = ? AND estado != 'abierta'",
                             (cartera,)).fetchone()[0]
-        resumen.append(f"Cuenta {cartera}: {nuevas} apuestas nuevas ({nuevas - gratis} con créditos y {gratis} con "
-                       f"momios gratuitos de DraftKings); {ganadas} ganadas y {perdidas} perdidas "
+        resumen.append(f"Cuenta {cartera}: {nuevas} apuestas nuevas ({nuevas - gratis - caliente} con créditos, {gratis} con "
+                       f"momios gratuitos de DraftKings y {caliente} con momios de Caliente); {ganadas} ganadas y {perdidas} perdidas "
                        f"({ganancia:+,.0f} $). Banca: ${inicial + total:,.0f} ({total / inicial:+.2%} desde el inicio).")
     secciones.append({"titulo": "Resumen del día", "parrafos": resumen})
 
@@ -154,11 +154,11 @@ def escribir(con, config: dict, dia: date | None = None) -> None:
     por_origen = {}
     for casa, clv in con.execute("""SELECT a.casa, a.clv FROM apuestas a JOIN estrategias e ON e.nombre = a.estrategia
                                     WHERE e.tipo = 'valor' AND a.clv IS NOT NULL AND a.estado != 'anulada'"""):
-        por_origen.setdefault("gratis" if casa == "draftkings" else "creditos", []).append(clv)
+        por_origen.setdefault("gratis" if casa in ("draftkings", "caliente") else "creditos", []).append(clv)
     n_c, m_c, _ = estadistica(por_origen.get("creditos", []))
     n_g, m_g, _ = estadistica(por_origen.get("gratis", []))
     if n_c >= 10 and n_g >= 10:
-        opinion.append(f"Por origen del momio: con créditos llevo CLV {m_c:+.2%} ({n_c} apuestas) y con DraftKings gratis "
+        opinion.append(f"Por origen del momio: con créditos llevo CLV {m_c:+.2%} ({n_c} apuestas) y con momios gratuitos (DraftKings y Caliente) "
                        f"{m_g:+.2%} ({n_g}). " + ("Los momios gratuitos están rindiendo igual o mejor." if m_g >= m_c
                                                  else "Los momios pagados siguen dando mejores precios que los gratuitos."))
     elif n_g:

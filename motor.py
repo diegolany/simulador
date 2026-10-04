@@ -23,6 +23,7 @@ import aprendizaje
 import diario
 import estrategias
 import estudio
+import externos
 import marcadores
 import riesgo
 import tablero
@@ -272,6 +273,7 @@ def ciclo(con, config: dict, forzar_barrido: bool = False) -> None:
         restantes -= barrido_manual(con, config, activos, cal, presupuesto)
     else:
         restantes -= decidir_descargas(con, config, activos, cal, restantes)
+    restantes -= _seguro("Momios de Caliente", procesar_externos, con, config, activos, restantes) or 0
     # Gratis: con los momios ya descargados, apuestas que ahora sí entran en la ventana de alguna estrategia
     _seguro("Reanálisis", estrategias.reanalizar, con, config, config["minutos_reanalisis"], silencioso=True)
     _seguro("Búsqueda gratuita", apuestas_gratuitas, con, config)
@@ -295,6 +297,45 @@ def ciclo(con, config: dict, forzar_barrido: bool = False) -> None:
     guardar_estado(con, "restantes", restantes)
     guardar_estado(con, "ultimo_ciclo", iso(ahora()))
     con.commit()
+
+
+def procesar_externos(con, config: dict, activos: dict, restantes: int) -> int:
+    """Momios de Caliente leídos a mano (externos/caliente.json): se procesan una sola vez por archivo. Si el precio
+    justo de Pinnacle de esas ligas tiene más de 45 minutos, primero se actualiza (1 crédito por liga), porque una
+    comparación contra una foto vieja daría valor falso. Devuelve los créditos gastados."""
+    datos = externos.cargar("caliente")
+    if not datos or leer_estado(con, "externo_procesado") == datos["capturado"]:
+        return 0
+    guardar_estado(con, "externo_procesado", datos["capturado"])
+    con.commit()
+    if not externos.reciente(datos):
+        anotar(con, "sistema", "Caliente: el archivo de momios es de hace más de 6 h; ya no son precios reales y no se usó.")
+        return 0
+    # Primero, precio justo fresco (y la lista de partidos) de las ligas con partidos en las próximas 48 h
+    limite = iso(ahora() + timedelta(hours=48))
+    ligas = sorted({p["deporte"] for p in datos.get("partidos", [])
+                    if p.get("inicio") and iso(ahora()) < p["inicio"] <= limite and p["deporte"] in activos})
+    gastado = 0
+    for deporte in ligas:
+        ultima = _ultima_descarga(con, deporte)
+        fresca = ultima and ahora() - ultima < timedelta(minutes=45)
+        if not fresca and restantes - gastado - config["reserva_creditos"] >= 1:
+            gastado += apostar_con_captura(con, config, deporte, activos.get(deporte, deporte), "barrido")
+    mapa = externos.emparejar(con, datos)
+    if not mapa:
+        anotar(con, "sistema", f"Caliente: se leyeron {len(datos.get('partidos', []))} partidos, pero ninguno coincide "
+                               f"con los partidos que sigue el bot ({gastado} créditos usados).")
+        return gastado
+    colocadas, resumen = estrategias.apostar_externo(con, config, mapa, datos["capturado"], "Momio de Caliente (lectura manual)")
+    m = resumen["mejor"]
+    anotar(con, "sistema", f"Caliente: comparé {resumen['comparados']} de {len(mapa)} partidos contra el precio justo de "
+                           f"Pinnacle ({gastado} créditos para actualizarlo). "
+                           + (f"El mejor: {m['partido']} ({m['seleccion']}) a {m['momio']:.2f} contra un justo de "
+                              f"{m['justo']:.2f} ({m['valor']:+.1%}). " if m else "")
+                           + ("Apuestas: " + ", ".join(f"{n} {e}" for e, n in colocadas.items()) + "." if colocadas
+                              else "Ninguno cumplió las reglas, así que no aposté."))
+    con.commit()
+    return gastado
 
 
 def apuestas_gratuitas(con, config: dict, manual: bool = False) -> None:

@@ -1,0 +1,428 @@
+{
+ "casa": "caliente",
+ "capturado": "2026-10-04T06:23:34+00:00",
+ "partidos": [
+  {
+   "deporte": "americanfootball_nfl",
+   "inicio": "2026-10-04T13:30:00+00:00",
+   "equipos": [
+    "Indianapolis Colts",
+    "Washington Commanders"
+   ],
+   "momios": {
+    "Indianapolis Colts": 1.45,
+    "Washington Commanders": 2.85
+   }
+  },
+  {
+   "deporte": "americanfootball_nfl",
+   "inicio": "2026-10-04T20:25:00+00:00",
+   "equipos": [
+    "Kansas City Chiefs",
+    "Las Vegas Raiders"
+   ],
+   "momios": {
+    "Kansas City Chiefs": 1.45,
+    "Las Vegas Raiders": 2.9
+   }
+  },
+  {
+   "deporte": "americanfootball_nfl",
+   "inicio": "2026-10-05T00:20:00+00:00",
+   "equipos": [
+    "Detroit Lions",
+    "Carolina Panthers"
+   ],
+   "momios": {
+    "Detroit Lions": 1.5,
+    "Carolina Panthers": 2.7
+   }
+  },
+  {
+   "deporte": "americanfootball_nfl",
+   "inicio": "2026-10-04T17:00:00+00:00",
+   "equipos": [
+    "Los Angeles Rams",
+    "Philadelphia Eagles"
+   ],
+   "momios": {
+    "Los Angeles Rams": 1.533,
+    "Philadelphia Eagles": 2.65
+   }
+  },
+  {
+   "deporte": "americanfootball_nfl",
+   "inicio": "2026-10-04T17:00:00+00:00",
+   "equipos": [
+    "Jacksonville Jaguars",
+    "Cincinnati Bengals"
+   ],
+   "momios": {
+    "Jacksonville Jaguars": 2.25,
+    "Cincinnati Bengals": 1.7
+   }
+  },
+  {
+   "deporte": "americanfootball_nfl",
+   "inicio": "2026-10-04T17:00:00+00:00",
+   "equipos": [
+    "Green Bay Packers",
+    "Tampa Bay Buccaneers"
+   ],
+   "momios": {
+    "Green Bay Packers": 1.615,
+    "Tampa Bay Buccaneers": 2.4
+   }
+  },
+  {
+   "deporte": "americanfootball_nfl",
+   "inicio": "2026-10-04T20:25:00+00:00",
+   "equipos": [
+    "Denver Broncos",
+    "San Francisco 49ers"
+   ],
+   "momios": {
+    "Denver Broncos": 2.25,
+    "San Francisco 49ers": 1.7
+   }
+  },
+  {
+   "deporte": "americanfootball_nfl",
+   "inicio": "2026-10-04T17:00:00+00:00",
+   "equipos": [
+    "New England Patriots",
+    "Buffalo Bills"
+   ],
+   "momios": {
+    "New England Patriots": 3.65,
+    "Buffalo Bills": 1.3
+   }
+  },
+  {
+   "deporte": "americanfootball_nfl",
+   "inicio": "2026-10-04T17:00:00+00:00",
+   "equipos": [
+    "Arizona Cardinals",
+    "New York Giants"
+   ],
+   "momios": {
+    "Arizona Cardinals": 1.727,
+    "New York Giants": 2.2
+   }
+  },
+  {
+   "deporte": "americanfootball_nfl",
+   "inicio": "2026-10-04T17:00:00+00:00",
+   "equipos": [
+    "Dallas Cowboys",
+    "Houston Texans"
+   ],
+   "momios": {
+    "Dallas Cowboys": 2.375,
+    "Houston Texans": 1.615
+   }
+  },
+  {
+   "deporte": "americanfootball_nfl",
+   "inicio": "2026-10-04T20:05:00+00:00",
+   "equipos": [
+    "Miami Dolphins",
+    "Minnesota Vikings"
+   ],
+   "momios": {
+    "Miami Dolphins": 5.75,
+    "Minnesota Vikings": 1.166
+   }
+  },
+  {
+   "deporte": "americanfootball_nfl",
+   "inicio": "2026-10-04T20:25:00+00:00",
+   "equipos": [
+    "Los Angeles Chargers",
+    "Seattle Seahawks"
+   ],
+   "momios": {
+    "Los Angeles Chargers": 3.85,
+    "Seattle Seahawks": 1.285
+   }
+  },
+  {
+   "deporte": "americanfootball_nfl",
+   "inicio": "2026-10-04T17:00:00+00:00",
+   "equipos": [
+    "New York Jets",
+    "Chicago Bears"
+   ],
+   "momios": {
+    "New York Jets": 2.65,
+    "Chicago Bears": 1.533
+   }
+  },
+  {
+   "deporte": "americanfootball_nfl",
+   "inicio": "2026-10-04T17:00:00+00:00",
+   "equipos": [
+    "Tennessee Titans",
+    "Baltimore Ravens"
+   ],
+   "momios": {
+    "Tennessee Titans": 6.25,
+    "Baltimore Ravens": 1.142
+   }
+  },
+  {
+   "deporte": "americanfootball_nfl",
+   "inicio": "2026-10-06T00:15:00+00:00",
+   "equipos": [
+    "Atlanta Falcons",
+    "New Orleans Saints"
+   ],
+   "momios": {
+    "Atlanta Falcons": 2.1,
+    "New Orleans Saints": 1.8
+   }
+  },
+  {
+   "deporte": "soccer_spain_segunda_division",
+   "inicio": "2026-10-04T12:00:00+00:00",
+   "equipos": [
+    "Real Sociedad B",
+    "Granada"
+   ],
+   "momios": {
+    "Real Sociedad B": 2.52,
+    "Granada": 2.74,
+    "Empate": 3.25
+   }
+  },
+  {
+   "deporte": "soccer_spain_segunda_division",
+   "inicio": "2026-10-04T14:15:00+00:00",
+   "equipos": [
+    "Sporting Gijon",
+    "Celta Vigo B"
+   ],
+   "momios": {
+    "Sporting Gijon": 1.62,
+    "Celta Vigo B": 5.3,
+    "Empate": 3.75
+   }
+  },
+  {
+   "deporte": "soccer_spain_segunda_division",
+   "inicio": "2026-10-04T16:30:00+00:00",
+   "equipos": [
+    "CD Castellon",
+    "AD Ceuta"
+   ],
+   "momios": {
+    "CD Castellon": 1.22,
+    "AD Ceuta": 12,
+    "Empate": 6
+   }
+  },
+  {
+   "deporte": "soccer_spain_segunda_division",
+   "inicio": "2026-10-04T16:30:00+00:00",
+   "equipos": [
+    "Las Palmas",
+    "Real Valladolid"
+   ],
+   "momios": {
+    "Las Palmas": 2.2,
+    "Real Valladolid": 3.25,
+    "Empate": 3.25
+   }
+  },
+  {
+   "deporte": "soccer_spain_segunda_division",
+   "inicio": "2026-10-04T19:00:00+00:00",
+   "equipos": [
+    "Girona",
+    "RCD Mallorca"
+   ],
+   "momios": {
+    "Girona": 2.4,
+    "RCD Mallorca": 2.82,
+    "Empate": 3.35
+   }
+  },
+  {
+   "deporte": "soccer_spain_segunda_division",
+   "inicio": "2026-10-05T18:30:00+00:00",
+   "equipos": [
+    "CF Cordoba",
+    "CD Tenerife"
+   ],
+   "momios": {
+    "CF Cordoba": 1.9,
+    "CD Tenerife": 4,
+    "Empate": 3.4
+   }
+  },
+  {
+   "deporte": "soccer_argentina_primera_division",
+   "inicio": "2026-10-04T22:15:00+00:00",
+   "equipos": [
+    "Argentinos Juniors",
+    "CA Tigre"
+   ],
+   "momios": {
+    "Argentinos Juniors": 1.81,
+    "CA Tigre": 4.9,
+    "Empate": 3.25
+   }
+  },
+  {
+   "deporte": "soccer_argentina_primera_division",
+   "inicio": "2026-10-06T00:15:00+00:00",
+   "equipos": [
+    "Banfield",
+    "Rosario Central"
+   ],
+   "momios": {
+    "Banfield": 4.3,
+    "Rosario Central": 1.91,
+    "Empate": 3.3
+   }
+  },
+  {
+   "deporte": "soccer_argentina_primera_division",
+   "inicio": "2026-10-04T20:00:00+00:00",
+   "equipos": [
+    "Talleres de Cordoba",
+    "CA Belgrano"
+   ],
+   "momios": {
+    "Talleres de Cordoba": 2.6,
+    "CA Belgrano": 2.9,
+    "Empate": 3.05
+   }
+  },
+  {
+   "deporte": "soccer_argentina_primera_division",
+   "inicio": "2026-10-04T17:45:00+00:00",
+   "equipos": [
+    "Huracan",
+    "Aldosivi"
+   ],
+   "momios": {
+    "Huracan": 1.73,
+    "Aldosivi": 5.7,
+    "Empate": 3.3
+   }
+  },
+  {
+   "deporte": "soccer_argentina_primera_division",
+   "inicio": "2026-10-05T22:00:00+00:00",
+   "equipos": [
+    "Velez Sarsfield",
+    "Platense"
+   ],
+   "momios": {
+    "Velez Sarsfield": 1.95,
+    "Platense": 4.6,
+    "Empate": 3.05
+   }
+  },
+  {
+   "deporte": "soccer_argentina_primera_division",
+   "inicio": "2026-10-05T00:30:00+00:00",
+   "equipos": [
+    "Estudiantes Rio Cuarto",
+    "Racing Club"
+   ],
+   "momios": {
+    "Estudiantes Rio Cuarto": 4.35,
+    "Racing Club": 1.98,
+    "Empate": 3.1
+   }
+  },
+  {
+   "deporte": "soccer_argentina_primera_division",
+   "inicio": "2026-10-05T19:45:00+00:00",
+   "equipos": [
+    "Deportivo Riestra",
+    "Central Cordoba"
+   ],
+   "momios": {
+    "Deportivo Riestra": 1.91,
+    "Central Cordoba": 4.5,
+    "Empate": 3.2
+   }
+  },
+  {
+   "deporte": "soccer_argentina_primera_division",
+   "inicio": "2026-10-05T22:00:00+00:00",
+   "equipos": [
+    "Estudiantes de La Plata",
+    "Gimnasia y Esgrima Mendoza"
+   ],
+   "momios": {
+    "Estudiantes de La Plata": 1.73,
+    "Gimnasia y Esgrima Mendoza": 5.25,
+    "Empate": 3.45
+   }
+  },
+  {
+   "deporte": "icehockey_nhl",
+   "inicio": "2026-10-05T00:00:00+00:00",
+   "equipos": [
+    "Calgary Flames",
+    "Seattle Kraken"
+   ],
+   "momios": {
+    "Calgary Flames": 2.22,
+    "Seattle Kraken": 1.68
+   }
+  },
+  {
+   "deporte": "icehockey_nhl",
+   "inicio": "2026-10-04T17:00:00+00:00",
+   "equipos": [
+    "Winnipeg Jets",
+    "Detroit Red Wings"
+   ],
+   "momios": {
+    "Winnipeg Jets": 1.91,
+    "Detroit Red Wings": 1.92
+   }
+  },
+  {
+   "deporte": "icehockey_nhl",
+   "inicio": "2026-10-05T01:00:00+00:00",
+   "equipos": [
+    "Vegas Golden Knights",
+    "Vancouver Canucks"
+   ],
+   "momios": {
+    "Vegas Golden Knights": 1.41,
+    "Vancouver Canucks": 2.96
+   }
+  },
+  {
+   "deporte": "icehockey_nhl",
+   "inicio": "2026-10-04T22:00:00+00:00",
+   "equipos": [
+    "Utah Mammoth",
+    "New York Rangers"
+   ],
+   "momios": {
+    "Utah Mammoth": 2.1,
+    "New York Rangers": 1.76
+   }
+  },
+  {
+   "deporte": "icehockey_nhl",
+   "inicio": "2026-10-05T00:00:00+00:00",
+   "equipos": [
+    "Florida Panthers",
+    "Anaheim Ducks"
+   ],
+   "momios": {
+    "Florida Panthers": 1.73,
+    "Anaheim Ducks": 2.14
+   }
+  }
+ ]
+}

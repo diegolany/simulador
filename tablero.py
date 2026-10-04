@@ -84,6 +84,7 @@ def _seguro(funcion, *args):
         traceback.print_exc()
         return None
 
+ORIGENES_GRATIS = ("draftkings", "caliente")  # casas cuyos momios no cuestan créditos (ESPN y lectura manual)
 DEPORTES = {"soccer": "Fútbol", "basketball": "Básquetbol", "americanfootball": "Fútbol americano",
             "baseball": "Béisbol", "icehockey": "Hockey", "mma": "MMA", "boxing": "Box", "tennis": "Tenis"}
 
@@ -209,7 +210,7 @@ def _evidencia(con) -> dict | None:
 
 
 def _origen(a: dict) -> str:
-    return "draftkings" if a["casa"] == "draftkings" else "creditos"
+    return a["casa"] if a["casa"] in ORIGENES_GRATIS else "creditos"
 
 
 def _fila(a: dict) -> dict:
@@ -322,7 +323,7 @@ def estado(con, config: dict) -> dict:
             "momio": a["momio"], "americano": decimal_a_americano(a["momio"]), "monto": a["monto"],
             "potencial": a["monto"] * (a["momio"] - 1), "prob": a["prob_justa"], "valor": a["valor"],
             "momio_ref": a["momio_ref"], "momio_ref_actual": momio_ref_actual, "movimiento": movimiento,
-            "razon": a["razon"], "fuente": "draftkings" if a["casa"] == "draftkings" else "creditos",
+            "razon": a["razon"], "fuente": _origen(a),
             "momio_visto": a["momio_visto"], "ventaja": a["ventaja_estimada"],
             "progreso": _progreso(a, fase, momento, duracion),
         })
@@ -339,7 +340,7 @@ def estado(con, config: dict) -> dict:
                          "WHEN 'retadora' THEN 1 WHEN 'experimento' THEN 2 WHEN 'control' THEN 3 ELSE 4 END, creada"):
         propias = [a for a in todas if a["estrategia"] == e["nombre"]]
         r = _resumen(propias)
-        por_origen = {o: _resumen([a for a in propias if _origen(a) == o]) for o in ("creditos", "draftkings")}
+        por_origen = {o: _resumen([a for a in propias if _origen(a) == o]) for o in ("creditos", *ORIGENES_GRATIS)}
         post = posts.get(e["nombre"])
         confianza = _seguro(riesgo.confianza, [a["clv"] for a in propias if a["clv"] is not None and a["estado"] != "anulada"],
                             post, [a["momio"] for a in propias if a["estado"] in ("ganada", "perdida")])
