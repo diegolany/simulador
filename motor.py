@@ -77,9 +77,10 @@ def deportes_por_liquidar(con, config: dict) -> list[str]:
     Se agrupan para gastar menos: se piden cuando el más viejo lleva horas esperando o ya son varios."""
     momento = ahora()
     pendientes = {}
+    # Los pospuestos no se piden: no habrá resultado, y a las 48 h se anulan solos (regla de las casas)
     for f in con.execute("""SELECT DISTINCT a.evento_id, a.deporte, a.inicio FROM apuestas a
                             JOIN eventos e ON e.id = a.evento_id
-                            WHERE a.estado = 'abierta' AND e.terminado = 0"""):
+                            WHERE a.estado = 'abierta' AND e.terminado = 0 AND e.pospuesto IS NULL"""):
         fin = a_fecha(f["inicio"]) + _duracion(config, f["deporte"])
         if marcadores.cubierto(f["deporte"]) and momento - fin < timedelta(hours=6):
             continue  # se le da tiempo a ESPN antes de gastar créditos
