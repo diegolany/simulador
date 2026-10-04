@@ -13,6 +13,69 @@ from base_datos import a_fecha, ahora, iso, leer_estado
 from momios import decimal_a_americano, probabilidades_justas
 
 
+# Reloj de cada deporte: (periodos, minutos por periodo, nombre del periodo, minutos reales por minuto de juego,
+# minutos del descanso de medio tiempo). Los minutos reales incluyen pausas, tiempos fuera y comerciales.
+RELOJES = {
+    "americanfootball_nfl": (4, 15, "cuarto", 3.0, 13),
+    "americanfootball_ncaaf": (4, 15, "cuarto", 3.3, 20),
+    "basketball_nba": (4, 12, "cuarto", 2.6, 15),
+    "basketball_euroleague": (4, 10, "cuarto", 2.6, 15),
+    "icehockey_nhl": (3, 20, "periodo", 1.9, 18),  # en hockey hay descanso después del 1º y del 2º periodo
+}
+
+
+def _ordinal(n: int, femenino: bool = False) -> str:
+    if femenino:
+        return f"{n}ª"
+    return {1: "1er", 3: "3er"}.get(n, f"{n}º")
+
+
+def _progreso(a: dict, fase: str, momento, duracion_h: float) -> dict:
+    """En qué parte va el partido y a qué hora se estima que termine (con el reloj de ESPN)."""
+    fin_previsto = a_fecha(a["inicio"]) + timedelta(hours=duracion_h)
+    if fase == "por_empezar":
+        return {"texto": None, "fin": iso(fin_previsto)}
+    if fase != "en_juego":
+        return {"texto": None, "fin": None}
+    deporte, periodo, reloj = a["deporte"], a["periodo"], a["reloj"] or 0
+    detalle, reloj_texto = a["detalle"] or "", a["reloj_texto"] or ""
+    leido = a_fecha(a["leido_vivo"]) if a["leido_vivo"] else momento
+    medio = any(x in detalle.lower() for x in ("half", "ht"))
+    if deporte.startswith("soccer") and periodo:
+        minuto = reloj / 60
+        if medio and periodo == 1:
+            texto, resta = "Medio tiempo", 15 + 45 + 3
+        elif periodo > 2:
+            texto, resta = f"Tiempo extra · minuto {reloj_texto}", max(0, 120 - minuto) + 2
+        else:
+            texto = f"{_ordinal(periodo)} tiempo · minuto {reloj_texto}"
+            resta = max(0, 90 - minuto) + 3 + (15 if periodo == 1 else 0)  # 3 min de reposición y el descanso
+    elif deporte in RELOJES and periodo:
+        n, largo, nombre, factor, descanso = RELOJES[deporte]
+        if periodo > n:
+            texto, resta = f"Tiempo extra · faltan {reloj_texto}", max(5, reloj / 60 * factor)
+        else:
+            if medio:
+                texto = "Medio tiempo"
+            elif reloj <= 0:
+                texto = f"Fin del {_ordinal(periodo)} {nombre}"
+            else:
+                texto = f"{_ordinal(periodo)} {nombre} · faltan {reloj_texto} del {nombre}"
+            resta = (reloj / 60 + (n - periodo) * largo) * factor
+            if deporte.startswith("icehockey"):
+                resta += descanso * (n - periodo)
+            elif periodo <= n // 2:
+                resta += descanso
+    elif deporte.startswith("baseball") and periodo:
+        mitad = "alta" if detalle.startswith("Top") else "baja" if detalle.startswith("Bot") else "cambio"
+        medias = max(1, (9 - periodo) * 2 + (2 if mitad == "alta" else 1 if mitad in ("baja", "cambio") else 0))
+        texto = f"{_ordinal(periodo, True)} entrada" + ({"alta": " (parte alta)", "baja": " (parte baja)"}.get(mitad, ""))
+        resta = medias * 10  # unos 10 minutos reales por media entrada
+    else:  # sin reloj en vivo (Euroliga, peleas): según la duración típica
+        return {"texto": None, "fin": iso(fin_previsto) if fin_previsto > momento else None}
+    return {"texto": texto, "fin": iso(leido + timedelta(minutes=resta)), "leido": iso(leido)}
+
+
 def _seguro(funcion, *args):
     """Una sección que falle no debe tumbar todo el tablero: se omite y se registra el error."""
     try:
@@ -222,7 +285,8 @@ def estado(con, config: dict) -> dict:
     objetivos = config["objetivos_semana"]
 
     todas = [dict(r) for r in con.execute(
-        """SELECT a.*, e.local, e.visitante, e.marcador_local, e.marcador_visitante, e.detalle, e.pospuesto
+        """SELECT a.*, e.local, e.visitante, e.marcador_local, e.marcador_visitante, e.detalle, e.pospuesto,
+                  e.periodo, e.reloj, e.reloj_texto, e.leido_vivo
            FROM apuestas a JOIN eventos e ON e.id = a.evento_id ORDER BY a.colocada""")]
     principal = _cartera([a for a in todas if a["estrategia"] == "Principal"], inicial, inicio, momento, objetivos)
 
@@ -260,6 +324,7 @@ def estado(con, config: dict) -> dict:
             "momio_ref": a["momio_ref"], "momio_ref_actual": momio_ref_actual, "movimiento": movimiento,
             "razon": a["razon"], "fuente": "draftkings" if a["casa"] == "draftkings" else "creditos",
             "momio_visto": a["momio_visto"], "ventaja": a["ventaja_estimada"],
+            "progreso": _progreso(a, fase, momento, duracion),
         })
     activas.sort(key=lambda x: x["inicio"])
 

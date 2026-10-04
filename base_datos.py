@@ -22,7 +22,11 @@ CREATE TABLE IF NOT EXISTS eventos (
     marcador_visitante INTEGER,
     terminado INTEGER NOT NULL DEFAULT 0,
     detalle TEXT,                   -- estado en vivo según ESPN, ej. "2nd Half - 67'"
-    pospuesto TEXT                  -- cuándo se vio pospuesto, suspendido o cancelado (vacío si se juega normal)
+    pospuesto TEXT,                 -- cuándo se vio pospuesto, suspendido o cancelado (vacío si se juega normal)
+    periodo INTEGER,                -- cuarto, tiempo, periodo o entrada en curso (ESPN)
+    reloj REAL,                     -- segundos que faltan del periodo (en fútbol: minuto jugado, en segundos)
+    reloj_texto TEXT,               -- reloj como lo muestra ESPN, ej. "11:18" o "67'"
+    leido_vivo TEXT                 -- cuándo se leyó ese reloj
 );
 
 -- Cada descarga agrega una foto nueva; nunca se borra, así se puede medir
@@ -154,7 +158,8 @@ def conectar() -> sqlite3.Connection:
               ("apuestas", "momio_visto", "REAL"), ("apuestas", "margen_ref", "REAL"),
               ("apuestas", "ventaja_estimada", "REAL"), ("apuestas", "minutos_precio", "REAL"),
               ("apuestas", "multiplicador", "REAL"), ("consumo_api", "partidos", "INTEGER"),
-              ("eventos", "pospuesto", "TEXT"))
+              ("eventos", "pospuesto", "TEXT"), ("eventos", "periodo", "INTEGER"), ("eventos", "reloj", "REAL"),
+              ("eventos", "reloj_texto", "TEXT"), ("eventos", "leido_vivo", "TEXT"))
     for tabla, columna, tipo in nuevas:  # bases creadas antes de esas columnas
         if columna not in {c[1] for c in con.execute(f"PRAGMA table_info({tabla})")}:
             con.execute(f"ALTER TABLE {tabla} ADD COLUMN {columna} {tipo}")

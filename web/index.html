@@ -802,6 +802,18 @@ function boletos(d) {
   const n = todasEst.length, nc = todasEst.filter(x => x.fuente !== 'draftkings').length, ng = n - nc;
   $('#reparto-origen').textContent = n ? `💳 Créditos ${nc} (${pct(nc / n, 0)}) · 🆓 DraftKings ${ng} (${pct(ng / n, 0)})` : '';
   $('#conteo-activas').textContent = d.activas.filter(a => a.estrategia === 'Principal').length || '';
+  // Cuánto falta: en vivo con el reloj de ESPN (cuarto, minuto, entrada); antes del partido, la hora en que termina
+  const reloj = a => {
+    const p = a.progreso || {};
+    if (!p.fin && !p.texto) return '';
+    const min = p.fin ? Math.round((new Date(p.fin) - Date.now()) / 60000) : null;
+    const cuanto = min == null ? '' : min <= 0 ? 'por terminar' : min < 60 ? `termina en ~${min} min`
+      : `termina en ~${Math.floor(min / 60)} h ${String(min % 60).padStart(2, '0')} min`;
+    const aprox = p.fin ? `(aprox. ${new Date(p.fin).toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' })})` : '';
+    const viejo = p.leido && Date.now() - new Date(p.leido) > 8 * 60000 ? ` · reloj de ${hace(p.leido)}` : '';
+    if (a.fase === 'por_empezar') return `<div class="chica" style="padding:2px 14px 0">🏁 Termina aprox. ${new Date(p.fin).toLocaleString('es-MX', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}</div>`;
+    return `<div style="padding:6px 14px 0;font-size:13px;font-weight:600">⏱ ${p.texto ? esc(p.texto) + ' · ' : ''}${cuanto} <span class="chica" style="font-weight:400">${aprox}${viejo}</span></div>`;
+  };
   // Con el marcador en vivo: ¿la apuesta va ganando o perdiendo?
   const marcha = a => {
     const [l, v] = (a.marcador || '').split('-').map(Number);
@@ -822,13 +834,14 @@ function boletos(d) {
     return `<article class="boleto ${enVivo ? 'en-vivo' : ''}">
       <div class="boleto-cabeza"><span>${emoji(a.deporte)} ${esc(a.liga)} ${origen(a.fuente)}</span>${estado}</div>
       <div class="equipos">${esc(a.local)} <span class="vs">vs</span> ${esc(a.visitante)}</div>
-      <div class="chica" style="padding:2px 14px 0">Partido: ${fecha(a.inicio)}${enVivo && a.detalle ? ' · ' + esc(a.detalle) : ''}
+      <div class="chica" style="padding:2px 14px 0">Partido: ${fecha(a.inicio)}${enVivo && a.detalle && !a.progreso?.texto ? ' · ' + esc(a.detalle) : ''}
         · Apostada: ${fecha(a.colocada)}${a.fase === 'pospuesto' ? (cancelado ? ' · Se canceló: se devuelve el dinero.'
           : ` · Se pospuso: si no se juega antes del ${fecha(new Date(new Date(a.pospuesto).getTime() + 48 * 3.6e6).toISOString())}, se devuelve el dinero.`) : ''}</div>
+      ${reloj(a)}
       <div class="eleccion">
         <div><div class="chica">Apuesta</div><b>${esc(a.seleccion)}</b>${marcha(a)}<div class="chica">${esc(a.casa)} · ${esc(a.estrategia)}</div>
-          <a class="chica" style="color:var(--serie-1)" target="_blank" rel="noopener"
-             href="https://duckduckgo.com/?q=${encodeURIComponent('!ducky site:oddsportal.com ' + a.local + ' ' + a.visitante)}">🔎 Ver en OddsPortal</a></div>
+          <a class="chica" style="color:var(--serie-1)" target="_blank" rel="noopener" title="Comparador de momios de OddsPortal en su versión para México"
+             href="https://www.cuotasahora.com/search/${encodeURIComponent(nombreBusqueda(a.local))}/">🔎 Comparar momios (CuotasAhora)</a></div>
         <div class="momio">${a.momio.toFixed(2)}<small>${americano(a.momio)}</small></div>
       </div>
       ${a.razon ? `<div class="chica" style="padding:0 14px 10px">💭 ${esc(a.razon)}</div>` : ''}
@@ -930,6 +943,10 @@ function evidencia(d) {
     { t: 'Confianza', num: 1, v: r => `${confianza(r)}<div class="chica">t = ${r.t.toFixed(1)}</div>` },
   ], filas, '');
 }
+
+// Nombre para buscar en el comparador: sin siglas de club (FC, CF, CD...), que cada sitio escribe distinto
+const SIGLAS = new Set(['fc', 'cf', 'sc', 'ac', 'cd', 'sd', 'ad', 'ud', 'ca', 'ce', 'rc', 'rcd', 'fk', 'sk', 'afc', 'cfc', 'sad', 'club']);
+const nombreBusqueda = n => String(n || '').split(/\s+/).filter(p => !SIGLAS.has(p.toLowerCase().replace(/\./g, ''))).join(' ') || n;
 
 const origen = f => f === 'draftkings' ? '<span class="chip bueno" title="Momio gratuito de DraftKings (ESPN)">🆓 DraftKings</span>'
   : '<span class="chip azul" title="Momio de una descarga pagada con créditos">💳 Créditos</span>';

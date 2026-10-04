@@ -179,6 +179,9 @@ def _partidos(eventos: list, con_ganador: bool = False) -> list[dict]:
             "fase": estado.get("state"),            # pre, in, post
             "terminado": bool(estado.get("completed")),
             "detalle": estado.get("shortDetail") or estado.get("description"),
+            "periodo": ev.get("status", {}).get("period"),
+            "reloj": ev.get("status", {}).get("clock"),
+            "reloj_texto": ev.get("status", {}).get("displayClock"),
             "momios": _momios_espn(ev),
         })
     return partidos
@@ -392,8 +395,10 @@ def actualizar(con) -> tuple[int, int]:
             goles_local, goles_visitante = goles_visitante, goles_local
         terminado = int(partido["fase"] == "post")
         con.execute("""UPDATE eventos SET marcador_local = ?, marcador_visitante = ?, detalle = ?, terminado = ?,
-                       pospuesto = NULL WHERE id = ?""",  # se está jugando: ya no está pospuesto
-                    (goles_local, goles_visitante, partido["detalle"], terminado, ev["id"]))
+                       pospuesto = NULL, periodo = ?, reloj = ?, reloj_texto = ?, leido_vivo = ?
+                       WHERE id = ?""",  # se está jugando: ya no está pospuesto
+                    (goles_local, goles_visitante, partido["detalle"], terminado, partido.get("periodo"),
+                     partido.get("reloj"), partido.get("reloj_texto"), iso(ahora()), ev["id"]))
         terminados += terminado
         vivos += 1 - terminado
     con.commit()
