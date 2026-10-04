@@ -241,6 +241,12 @@ def ciclo(con, config: dict, forzar_barrido: bool = False) -> None:
     if not leer_estado(con, "correccion_empates"):  # una vez: hockey que quedó empatado sin el gol de la tanda
         if _seguro("Corrección de empates", marcadores.revisar_empates, con) is not None:
             guardar_estado(con, "correccion_empates", True)
+    if not leer_estado(con, "fantasmas_reconstruidas"):  # una vez: aprender de las fotos que siguen guardadas
+        total = _seguro("Reconstruir apuestas fantasma", estrategias.reconstruir_senales, con, config)
+        if total is not None:
+            guardar_estado(con, "fantasmas_reconstruidas", True)
+            anotar(con, "aprendizaje", f"Apuestas fantasma: se reconstruyeron {total:,} precios de las fotos guardadas; "
+                                       "desde ahora el bot mide el CLV de todo lo que ve, no solo de lo que apuesta.")
 
     vivos, terminados = _seguro("Marcadores ESPN", marcadores.actualizar, con) or (0, 0)  # gratis
     if vivos or terminados:
@@ -255,6 +261,7 @@ def ciclo(con, config: dict, forzar_barrido: bool = False) -> None:
     if liquidadas:
         log(f"Se liquidaron {liquidadas} apuestas")
     estrategias.calcular_clv(con, config)
+    _seguro("Apuestas fantasma", estrategias.medir_senales, con, config)  # gratis: CLV de lo que vio sin apostar
     _seguro("Modo objetivo", riesgo.modo_objetivo, con, config)  # qué tan agresivo apostar en este ciclo
 
     for deporte in ligas_para_cierre(con, config):
@@ -367,6 +374,7 @@ def analizar_sin_gastar(con, config: dict) -> None:
     _seguro("Marcadores ESPN", marcadores.actualizar, con)
     estrategias.liquidar(con, config["casa_referencia"])
     estrategias.calcular_clv(con, config)
+    _seguro("Apuestas fantasma", estrategias.medir_senales, con, config)
     _seguro("Modo objetivo", riesgo.modo_objetivo, con, config)
     capturas, nuevas = estrategias.reanalizar(con, config, config["minutos_reanalisis"])
     log(f"Análisis sin gastar: {capturas} descargas revisadas, {nuevas} apuestas nuevas")

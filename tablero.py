@@ -7,7 +7,9 @@ from datetime import date, timedelta
 
 import cerebro
 import riesgo
-from aprendizaje import calibracion_pronosticos, calidad_pronosticos, estadistica, evidencia
+from aprendizaje import (calibracion_pronosticos, calidad_pronosticos, clv_fantasma, estadistica, evidencia,
+                         resumen_fantasmas, senales_medidas)
+from estrategias import PARAMETROS_BASE
 from api import creditos_hoy, dias_restantes as dias_para_repartir
 from base_datos import a_fecha, ahora, iso, leer_estado
 from momios import decimal_a_americano, probabilidades_justas
@@ -335,6 +337,7 @@ def estado(con, config: dict) -> dict:
     # Laboratorio: todas las estrategias compitiendo, cada una con su banca. La confianza usa el CLV encogido:
     # ya descuenta la suerte de tener muchas estrategias compitiendo a la vez
     posts = _seguro(riesgo.posteriores_laboratorio, con) or {}
+    fantasmas = _seguro(senales_medidas, con) or []
     laboratorio = []
     for e in con.execute("SELECT * FROM estrategias ORDER BY CASE rol WHEN 'principal' THEN 0 "
                          "WHEN 'retadora' THEN 1 WHEN 'experimento' THEN 2 WHEN 'control' THEN 3 ELSE 4 END, creada"):
@@ -345,10 +348,15 @@ def estado(con, config: dict) -> dict:
         confianza = _seguro(riesgo.confianza, [a["clv"] for a in propias if a["clv"] is not None and a["estado"] != "anulada"],
                             post, [a["momio"] for a in propias if a["estado"] in ("ganada", "perdida")])
         caidas = riesgo.caidas(propias, inicial)
+        # Laboratorio instantáneo: cómo le habría ido con sus reglas en todas las apuestas fantasma medidas
+        prueba = None
+        if e["tipo"] == "valor" and fantasmas:
+            n, media, ee = estadistica(clv_fantasma(fantasmas, {**PARAMETROS_BASE, **json.loads(e["parametros"])}, config))
+            prueba = {"n": n, "clv": media if n else None, "ee": ee if n else None}
         laboratorio.append({"nombre": e["nombre"], "rol": e["rol"], "tipo": e["tipo"],
                             "descripcion": e["descripcion"], "parametros": json.loads(e["parametros"]),
                             "banca": inicial + r["ganancia"], "por_origen": por_origen, "confianza": confianza,
-                            "caida_max": caidas["maxima_pct"], **r})
+                            "caida_max": caidas["maxima_pct"], "fantasma": prueba, **r})
 
     # Calibración con todos los partidos pronosticados (se haya apostado o no)
     partidos_calibrados, calibracion = calibracion_pronosticos(con)
@@ -377,8 +385,9 @@ def estado(con, config: dict) -> dict:
         "calibracion": calibracion,
         "calibracion_partidos": partidos_calibrados,
         "calidad_pronosticos": _seguro(calidad_pronosticos, con),
+        "fantasmas": _seguro(resumen_fantasmas, con, config),
         "riesgo": _seguro(riesgo.panel, con, config),
-        "cerebro": _seguro(lambda: cerebro.Cerebro(con, config).resumen()),
+        "cerebro": _seguro(lambda: cerebro.obtener(con, config).resumen()),
         "config_riesgo": {**config["riesgo"], "deslizamiento_base": config["ejecucion"]["deslizamiento_base"]},
         "diario": diario,
         "bitacora": bitacora,

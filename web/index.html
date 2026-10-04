@@ -364,6 +364,17 @@ footer { margin-top: 28px; color: var(--tenue); font-size: 12.5px; line-height: 
     <h3 class="seccion">Ranking de estrategias en vivo</h3>
     <div class="tarjeta"><div class="tabla ranking" id="laboratorio"></div></div>
     <div id="detalle-estrategia"></div>
+    <h3 class="seccion">Apuestas fantasma: aprender de todo lo que ve</h3>
+    <div class="tarjeta">
+      <p class="ayuda">El bot anota cada precio interesante que ve en las casas, lo apueste o no, y al empezar el partido mide si le
+        ganó al cierre. No mueve la banca ni gasta créditos, pero le da decenas de veces más datos que sus propias apuestas: con ellos
+        aprende el cerebro y se califican al instante las reglas nuevas del laboratorio (columna "Prueba fantasma").</p>
+      <div class="kpis" id="fantasmas-kpis"></div>
+      <div class="etiqueta" style="margin:16px 0 6px;font-weight:600">¿El valor que veo es real? CLV según el valor al verlo</div>
+      <div class="tabla" id="fantasmas-rangos"></div>
+      <div class="etiqueta" style="margin:16px 0 6px;font-weight:600">Casas que más regalan precio (precios con valor de 1% o más)</div>
+      <div class="tabla" id="fantasmas-casas"></div>
+    </div>
     <h3 class="seccion">Calibración</h3>
     <div class="tarjeta">
       <p class="ayuda">Si estimamos 40% y ganamos cerca de 40% de esas apuestas, el cálculo está bien calibrado. Necesita cientos de apuestas.</p>
@@ -635,7 +646,7 @@ function cerebroVista(d) {
   const b = d.cerebro;
   if (!b) { $('#cerebro').innerHTML = ''; return; }
   $('#cerebro-ayuda').innerHTML = `De cada <b>1%</b> de valor que el bot ve al apostar, el precio de cierre confirma <b>${b.factor.toFixed(2)}%</b>.
-    Arrancó en ${b.previo.toFixed(2)}% por la prueba histórica y se corrige con cada apuesta medida (${b.n_factor} hasta ahora).
+    Arrancó en ${b.previo.toFixed(2)}% por la prueba histórica y se corrige con cada medición: ${(b.n_efectivo ?? b.n_factor).toLocaleString('es-MX')} hasta ahora, contando apuestas reales y fantasma.
     Por eso apuesta según la ventaja que estima, no la que ve a simple vista, y no apuesta donde no ve ventaja real.
     Abajo, las situaciones que suman o restan ventaja: cada efecto empieza en cero y solo crece cuando muchas apuestas lo respaldan.`;
   const maximo = Math.max(0.005, ...b.efectos.map(e => Math.abs(e.efecto)));
@@ -904,6 +915,9 @@ function laboratorio(d) {
         return `${pct(c.p_ventaja, 0)} ${probChip(c.p_ventaja)}<div class="chica">estimada ${spct(c.ventaja, 2)}` +
           (c.faltan_clv ? ` · faltan ${cantidad(c.faltan_clv)}` : '') + '</div>';
       } },
+    { t: 'Prueba fantasma', num: 1, v: e => e.fantasma && e.fantasma.n
+        ? `${conSigno(e.fantasma.clv, spct(e.fantasma.clv))}<div class="chica">${e.fantasma.n.toLocaleString('es-MX')} partidos</div>`
+        : '<span class="tenue">—</span>' },
     { t: 'Apuestas', num: 1, v: e => `${e.apuestas}${e.abiertas ? `<div class="chica">${e.abiertas} activas</div>` : ''}` },
     { t: 'Rendimiento', num: 1, v: e => conSigno(e.rendimiento, spct(e.rendimiento)) },
     { t: 'Origen', num: 1, v: e => {
@@ -927,6 +941,28 @@ function laboratorio(d) {
     ${kpi('📏', 'Pérdida logarítmica', q.perdida_log.toFixed(3), `${q.partidos.toLocaleString('es-MX')} partidos · menor = mejor`)}
   </div>`);
   detalleEstrategia(d);
+  fantasmasVista(d);
+}
+
+function fantasmasVista(d) {
+  const f = d.fantasmas;
+  if (!f) { $('#fantasmas-kpis').innerHTML = '<div class="vacio">Aparece en la siguiente vuelta del bot.</div>'; return; }
+  $('#fantasmas-kpis').innerHTML = [
+    kpi('👻', 'Precios anotados', f.total.toLocaleString('es-MX'), 'lo que vio en las casas, aunque no lo haya apostado'),
+    kpi('📏', 'Ya medidos', f.medidas.toLocaleString('es-MX'), `${f.pendientes.toLocaleString('es-MX')} esperan a que empiece su partido`),
+    kpi('🎟️', 'Apuestas reales medidas', d.laboratorio.reduce((s, e) => s + (e.clv_n || 0), 0).toLocaleString('es-MX'), 'lo que habría tenido para aprender sin fantasmas'),
+  ].join('');
+  $('#fantasmas-rangos').innerHTML = tabla([
+    { t: 'Valor al verlo', v: r => `<b>${esc(r.rango)}</b>` },
+    { t: 'Mediciones', num: 1, v: r => r.n.toLocaleString('es-MX') },
+    { t: 'CLV promedio', num: 1, v: r => `${conSigno(r.clv, spct(r.clv, 2))}<div class="chica">± ${pct(r.ee * 1.96, 1)}</div>` },
+    { t: 'Le gana al cierre', num: 1, v: r => pct(r.gana_cierre, 0) },
+  ], f.por_rango, 'Todavía no hay apuestas fantasma medidas.');
+  $('#fantasmas-casas').innerHTML = tabla([
+    { t: 'Casa', v: r => `<b>${esc(r.casa)}</b>` },
+    { t: 'Mediciones', num: 1, v: r => r.n.toLocaleString('es-MX') },
+    { t: 'CLV promedio', num: 1, v: r => conSigno(r.clv, spct(r.clv, 2)) },
+  ], f.por_casa, 'Con 10 mediciones o más por casa aparece aquí.');
 }
 
 function evidencia(d) {

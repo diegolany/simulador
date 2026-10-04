@@ -9,7 +9,7 @@ from datetime import date, datetime, time, timedelta
 
 import cerebro
 import riesgo
-from aprendizaje import calibracion_pronosticos, estadistica
+from aprendizaje import calibracion_pronosticos, estadistica, resumen_fantasmas
 from base_datos import a_fecha, ahora, guardar_estado, iso, leer_estado
 
 CARTERAS = ("Principal",)
@@ -126,6 +126,12 @@ def escribir(con, config: dict, dia: date | None = None) -> None:
                        f"{grande['tramo']} (promedio {grande['estimada']:.0%}), se cumple {grande['real']:.0%} "
                        f"({grande['n']} casos). " + ("Está bien calibrado." if abs(grande['real'] - grande['estimada']) < 0.06
                                                      else "Todavía hay diferencia; necesito más partidos."))
+    fantasmas = resumen_fantasmas(con, config)
+    if fantasmas["medidas"]:
+        rangos = "; ".join(f"valor {r['rango']}: CLV {r['clv']:+.1%} ({r['n']})" for r in fantasmas["por_rango"]
+                           if r["n"] >= 20)
+        aprendo.append(f"Apuestas fantasma: ya medí {fantasmas['medidas']:,} precios que vi (los haya apostado o no) contra "
+                       f"el cierre. Así sé qué tan real es el valor que veo" + (f" — {rangos}." if rangos else "."))
     for (mensaje,) in con.execute("""SELECT mensaje FROM bitacora WHERE tipo IN ('aprendizaje', 'ajuste', 'promocion', 'retiro', 'nueva')
                                       AND fecha >= ? AND fecha < ? ORDER BY id""", (desde, hasta)):
         aprendo.append(mensaje)
@@ -216,7 +222,7 @@ def _riesgo(con, config: dict) -> list[str]:
                       f"{pr['prob_perdida']:.0%}; lo más probable es terminar con ${pr['mediana']:,.0f}.")
     if datos.get("objetivo") and datos["objetivo"].get("razon"):
         textos.append("Modo objetivo: " + datos["objetivo"]["razon"])
-    mente = cerebro.Cerebro(con, config)
+    mente = cerebro.obtener(con, config)
     textos.append(f"Mi cerebro: de cada 1% de valor que veo, el cierre confirma {mente.factor:.2f}%, así que apuesto con "
                   f"la ventaja que estimo, no con la que veo a simple vista.")
     alerta = [x for x in datos["cuentas"] if x["estado"] != "normal"]

@@ -184,7 +184,7 @@ class _Contexto:
 
     def __init__(self, con, config: dict):
         self.con, self.config = con, config
-        self.mente = cerebro.Cerebro(con, config)
+        self.mente = cerebro.obtener(con, config)
         self.limitadas = riesgo.cuentas_limitadas(con)
         self.descartadas = 0
         self._caidas = {}
@@ -247,6 +247,22 @@ def _registrar(con, est: dict, ev, sel: str, casa: str, momio: float, visto: flo
          round(ventaja, 4) if ventaja is not None else None, minutos, multiplicador))
 
 
+def _anotar_senales(con, config: dict, ev, precios: list, justas: dict, margen: float, capturado: str) -> None:
+    """Apuestas fantasma: guarda cada precio (casa, selección, momio ya con deslizamiento) con valor de al menos −2%
+    para medir después su CLV. El mismo precio visto otra vez no se repite."""
+    f = config["fantasmas"]
+    for casa, sel, momio in precios:
+        if sel not in justas:
+            continue
+        v = valor_esperado(justas[sel], momio)
+        if f["valor_minimo"] <= v <= config["valor_sospechoso"] and momio <= f["momio_maximo"]:
+            con.execute("""INSERT OR IGNORE INTO senales (evento_id, deporte, liga, casa, seleccion, momio, prob_justa,
+                                                          valor, margen_ref, capturado, inicio)
+                           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                        (ev["id"], ev["deporte"], ev["liga"], casa, sel, round(momio, 3), justas[sel], v,
+                         round(margen, 4), capturado, ev["inicio"]))
+
+
 def colocar_apuestas(con, config: dict, capturado: str) -> tuple[dict, int]:
     """Evalúa la captura recién descargada con cada estrategia activa y registra sus apuestas.
     Devuelve ({estrategia: apuestas colocadas}, partidos con señal de valor)."""
@@ -303,6 +319,9 @@ def colocar_apuestas(con, config: dict, capturado: str) -> tuple[dict, int]:
         if any(0.02 <= valor_esperado(justas[o["sel"]], o["momio"]) <= config["valor_sospechoso"] and o["momio"] <= 10
                for o in ofertas):
             senales += 1
+        if minutos <= 5:  # solo precios recién vistos (los del reanálisis de fotos viejas ya se anotaron)
+            _anotar_senales(con, config, ev, [(o["casa"], o["sel"], o["momio"]) for o in ofertas], justas, margen,
+                            capturado)
 
         consenso = None
         for est in estrategias:
@@ -329,7 +348,7 @@ def colocar_apuestas(con, config: dict, capturado: str) -> tuple[dict, int]:
                         continue
                     estimada, aj = v, []
                     if p["cerebro"]:
-                        estimada, aj = ctx.mente.estimar(v, cerebro.rasgos(ev["liga"], o["casa"], o["momio"], horas, margen))
+                        estimada, aj = ctx.mente.estimar(v, cerebro.rasgos(ev["liga"], o["casa"], o["momio"], horas, margen, o["sel"]))
                         if estimada <= 0:
                             ctx.descartadas += 1
                             continue  # el cerebro no ve ventaja real en este tipo de apuesta
@@ -473,6 +492,7 @@ def _apostar_con_precios(con, config: dict, obtener_precio, minutos: float, nota
         justas = _justas_de(ref, selecciones)
         margen = margen_casa(list(ref.values()))
         ejecutados = {s: precio_ejecutado(precios[s], desliz) for s in selecciones}
+        _anotar_senales(con, config, ev, [(casa, s, ejecutados[s]) for s in selecciones], justas, margen, iso(momento))
         # Foto anterior de Pinnacle: para ver hacia dónde se movió el dinero profesional
         anterior = con.execute("""SELECT MAX(capturado) FROM momios WHERE evento_id = ? AND casa = ? AND mercado = 'h2h'
                                   AND capturado < ?""", (ev["id"], referencia, ev["cap"])).fetchone()[0]
@@ -519,7 +539,7 @@ def _apostar_con_precios(con, config: dict, obtener_precio, minutos: float, nota
                     continue
                 estimada, aj = v, []
                 if usa_cerebro:
-                    estimada, aj = ctx.mente.estimar(v, cerebro.rasgos(ev["liga"], casa, ejecutados[s], horas, margen))
+                    estimada, aj = ctx.mente.estimar(v, cerebro.rasgos(ev["liga"], casa, ejecutados[s], horas, margen, s))
                     if estimada <= 0:
                         ctx.descartadas += 1
                         continue
@@ -659,6 +679,72 @@ def liquidar(con, referencia: str = "pinnacle") -> int:
         anotar(con, "sistema", f"Se anularon {cur.rowcount} apuestas sin resultado disponible después de 4 días.")
     con.commit()
     return len(filas)
+
+
+def reconstruir_senales(con, config: dict) -> int:
+    """Una vez: apuestas fantasma de las fotos de momios que siguen guardadas, para aprender de inmediato con lo
+    que el bot ya vio. Devuelve cuántas señales quedaron."""
+    referencia = config["casa_referencia"]
+    excluidas = set(config["casas_excluidas"]) | {referencia}
+    max_antiguedad = timedelta(minutes=config["max_minutos_momio"])
+    desliz = deslizamiento(config, 0)
+    capturas = [r[0] for r in con.execute(
+        "SELECT DISTINCT capturado FROM momios WHERE casa = ? ORDER BY capturado", (referencia,))]
+    for capturado in capturas:
+        foto = _foto(con, capturado)
+        momento = a_fecha(capturado)
+        eventos = {f["id"]: f for f in con.execute(
+            f"SELECT id, deporte, liga, inicio FROM eventos WHERE id IN ({','.join('?' * len(foto))})", list(foto))}
+        for evento_id, casas in foto.items():
+            ev, ref = eventos.get(evento_id), casas.get(referencia)
+            if not ev or not ref or len(ref["momios"]) < 2 or a_fecha(ev["inicio"]) <= momento:
+                continue
+            selecciones = list(ref["momios"])
+            justas = _justas_de(ref["momios"], selecciones)
+            precios = [(casa, sel, precio_ejecutado(m, desliz)) for casa, d in casas.items()
+                       if casa not in excluidas and d["actualizado"] and set(d["momios"]) == set(selecciones)
+                       and momento - a_fecha(d["actualizado"]) <= max_antiguedad
+                       for sel, m in d["momios"].items()]
+            _anotar_senales(con, config, ev, precios, justas, margen_casa(list(ref["momios"].values())), capturado)
+    con.commit()
+    return con.execute("SELECT COUNT(*) FROM senales").fetchone()[0]
+
+
+def medir_senales(con, config: dict) -> int:
+    """CLV de las apuestas fantasma de partidos que ya empezaron: contra la última foto de Pinnacle antes del inicio
+    (si es posterior a la señal) o, si no la hay, contra el cierre de DraftKings que publica ESPN. Gratis."""
+    referencia = config["casa_referencia"]
+    momento = ahora()
+    medidas, cache = 0, {}
+    for ev in con.execute("""SELECT DISTINCT s.evento_id, s.deporte, s.inicio, e.local, e.visitante FROM senales s
+                             LEFT JOIN eventos e ON e.id = s.evento_id
+                             WHERE s.revisado = 0 AND s.inicio <= ?""", (iso(momento),)).fetchall():
+        cierre = con.execute("""SELECT MAX(capturado) FROM momios WHERE evento_id = ? AND casa = ? AND mercado = 'h2h'
+                                AND capturado < ?""", (ev["evento_id"], referencia, ev["inicio"])).fetchone()[0]
+        justas = {}
+        if cierre:
+            momios = {r[0]: r[1] for r in con.execute(
+                """SELECT seleccion, momio FROM momios WHERE evento_id = ? AND casa = ? AND mercado = 'h2h'
+                   AND capturado = ?""", (ev["evento_id"], referencia, cierre))}
+            if len(momios) >= 2:
+                justas = dict(zip(momios, probabilidades_justas(list(momios.values()))))
+        inicio = a_fecha(ev["inicio"])
+        espn = bool(ev["local"]) and marcadores.cubierto_momios(ev["deporte"])
+        for s in con.execute("SELECT id, seleccion, momio, capturado FROM senales WHERE evento_id = ? AND revisado = 0",
+                             (ev["evento_id"],)).fetchall():
+            p, fuente = None, None
+            if cierre and cierre > s["capturado"] and s["seleccion"] in justas:
+                p, fuente = justas[s["seleccion"]], "pinnacle"
+            elif espn:
+                p = marcadores.probabilidad_cierre(ev["deporte"], ev["local"], ev["visitante"], inicio, s["seleccion"], cache)
+                fuente = "draftkings" if p is not None else None
+                if p is None and momento < inicio + timedelta(hours=6):
+                    continue  # ESPN todavía puede publicar el cierre: se reintenta en el siguiente ciclo
+            con.execute("""UPDATE senales SET prob_cierre = ?, clv = ?, clv_fuente = ?, revisado = 1 WHERE id = ?""",
+                        (p, s["momio"] * p - 1 if p is not None else None, fuente, s["id"]))
+            medidas += p is not None
+    con.commit()
+    return medidas
 
 
 def calcular_clv(con, config: dict) -> int:

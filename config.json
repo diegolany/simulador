@@ -19,6 +19,10 @@
   "max_horas_referencia": 3,
   "max_minutos_referencia_valor": 60,
   "valor_sospechoso_dk": 0.04,
+  "fantasmas": {
+    "valor_minimo": -0.02,
+    "momio_maximo": 15
+  },
   "decision": {
     "horas_calendario": 3,
     "capacidad_ahorro": 6,
@@ -82,7 +86,8 @@
     "min_apuestas_clv_promocion": 25,
     "min_apuestas_clv_retiro": 40,
     "min_apuestas_filtro": 30,
-    "max_retadoras": 8,
+    "max_retadoras": 10,
+    "candidatas_mutacion": 40,
     "prob_promocion": 0.95,
     "prob_retiro": 0.10,
     "exploracion": 0.5

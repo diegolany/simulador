@@ -83,6 +83,9 @@ def valor_ligas(con, config: dict, deportes: list[str]) -> dict[str, float]:
     total = sum(n for n, _, _ in filas.values())
     general = (sum(s for _, s, _ in filas.values()) + 1) / (sum(p for _, _, p in filas.values()) + 25)
     clv = _clv_por(con, "deporte")
+    # Más evidencia de qué ligas dejan valor real: el CLV de las apuestas fantasma con valor de 1% o más
+    for deporte, valor in con.execute("SELECT deporte, clv FROM senales WHERE clv IS NOT NULL AND valor >= 0.01"):
+        clv.setdefault(deporte, []).append(valor)
     previa = (evidencia(con) or {}).get("por_clave", {})
     valores = {}
     for d in deportes:
@@ -143,7 +146,7 @@ def aprendizaje_diario(con, config: dict) -> None:
     anotar(con, "aprendizaje", f"Aprendizaje del día ({len(filas)} apuestas con CLV, promedio {general:+.1%}): "
                                f"le va mejor con {mejor[0]} (CLV {mejor[2]:+.1%} en {mejor[1]}) y peor con "
                                f"{peor[0]} (CLV {peor[2]:+.1%} en {peor[1]}).")
-    mente = cerebro.Cerebro(con, config)
+    mente = cerebro.obtener(con, config)
     firmes = [e for e in mente.resumen()["efectos"] if e["n"] >= 10]
     texto = (f"Cerebro: de cada 1% de valor que veo, el cierre confirma {mente.factor:.2f}% "
              f"(arrancó en {mente.previo:.2f}% por la prueba histórica; {mente.n_factor} apuestas medidas).")
@@ -201,6 +204,54 @@ def calidad_pronosticos(con) -> dict | None:
     n = len(filas)
     return {"partidos": n, "brier": brier / n, "brier_base": brier_base / n, "habilidad": 1 - brier / brier_base,
             "perdida_log": perdida / n}
+
+
+def senales_medidas(con) -> list[dict]:
+    """Apuestas fantasma con CLV medido, con lo necesario para aplicarles las reglas de una estrategia."""
+    return [dict(f) for f in con.execute(
+        """SELECT evento_id, deporte, liga, casa, seleccion, momio, valor, margen_ref, capturado, clv,
+                  (julianday(inicio) - julianday(capturado)) * 24 AS horas
+           FROM senales WHERE clv IS NOT NULL ORDER BY capturado""")]
+
+
+def clv_fantasma(senales: list[dict], p: dict, config: dict) -> list[float]:
+    """Laboratorio instantáneo: el CLV que habría tenido una estrategia con esas reglas en las apuestas fantasma.
+    Como en vivo, apuesta una vez por partido: la primera vez que un precio cumple sus reglas, el de más valor."""
+    elegidas = {}
+    for s in senales:  # vienen en orden de captura
+        if s["casa"] in p.get("casas_bloqueadas", []) or s["liga"] in p.get("ligas_bloqueadas", []):
+            continue
+        umbral = p["umbral"] + p.get("umbral_margen", 0) * max(0.0, (s["margen_ref"] or 0) - 0.025)
+        if not (p["momio_min"] <= s["momio"] <= p["momio_max"] and p["horas_min"] <= s["horas"] <= p["horas_max"]
+                and umbral <= s["valor"] <= config["valor_sospechoso"]):
+            continue
+        actual = elegidas.get(s["evento_id"])
+        if actual is None or (s["capturado"] == actual["capturado"] and s["valor"] > actual["valor"]):
+            elegidas[s["evento_id"]] = s
+    return [s["clv"] for s in elegidas.values()]
+
+
+def resumen_fantasmas(con, config: dict) -> dict:
+    """Lo aprendido de las apuestas fantasma: CLV por rango de valor (¿el valor que veo es real?) y por casa."""
+    filas = senales_medidas(con)
+    total, pendientes = con.execute("SELECT COUNT(*), SUM(revisado = 0) FROM senales").fetchone()
+    rangos = [(-1, 0, "menos de 0%"), (0, 0.01, "0% a 1%"), (0.01, 0.02, "1% a 2%"), (0.02, 0.04, "2% a 4%"),
+              (0.04, 0.08, "4% a 8%"), (0.08, 1, "más de 8%")]
+    por_rango = []
+    for bajo, alto, nombre in rangos:
+        clvs = [f["clv"] for f in filas if bajo <= f["valor"] < alto]
+        n, media, ee = estadistica(clvs)
+        if n:
+            por_rango.append({"rango": nombre, "n": n, "clv": media, "ee": ee,
+                              "gana_cierre": sum(1 for c in clvs if c > 0) / n})
+    por_casa = {}
+    for f in filas:
+        if f["valor"] >= 0.01:
+            por_casa.setdefault(f["casa"], []).append(f["clv"])
+    casas = sorted(({"casa": c, "n": len(v), "clv": sum(v) / len(v)} for c, v in por_casa.items() if len(v) >= 10),
+                   key=lambda x: -x["clv"])
+    return {"total": total or 0, "medidas": len(filas), "pendientes": pendientes or 0, "por_rango": por_rango,
+            "por_casa": casas[:12]}
 
 
 def toca_revision(con, config: dict) -> bool:
@@ -349,21 +400,31 @@ def revision(con, config: dict) -> None:
                                   f"probabilidad de ventaja real {post['p_ventaja']:.0%}"
                                   + (", y la Principal es claramente mejor." if peor_que_principal else "."))
 
-    # 4. Variantes nuevas para seguir explorando
+    # 4. Variantes nuevas para seguir explorando. Laboratorio instantáneo: se prueban muchas variantes contra las
+    # apuestas fantasma ya medidas y solo entran las que mejor le habrían ido (si hay pocas fantasmas, al azar)
     rng = random.Random()
     activas = [_leer(con, f[0])["p"] for f in con.execute(
         "SELECT nombre FROM estrategias WHERE rol IN ('principal', 'retadora')")]
     cupo = ap["max_retadoras"] - con.execute("SELECT COUNT(*) FROM estrategias WHERE rol = 'retadora'").fetchone()[0]
-    for letra in "ABCDEFGH"[:max(0, cupo)]:
-        parametros, cambios = mutar(principal["p"], activas, rng)
+    fantasmas = senales_medidas(con)
+    base = estadistica(clv_fantasma(fantasmas, principal["p"], config))
+    candidatas = []
+    for _ in range(ap["candidatas_mutacion"] if cupo > 0 else 0):
+        parametros, cambios = mutar(principal["p"], activas + [c[1] for c in candidatas], rng)
+        n, media, ee = estadistica(clv_fantasma(fantasmas, parametros, config))
+        candidatas.append((media - ee if n >= 30 else -1 + rng.random(), parametros, cambios, n, media))
+    candidatas.sort(key=lambda c: -c[0])
+    for letra, (_, parametros, cambios, n, media) in zip("ABCDEFGH", candidatas[:max(0, cupo)]):
         nombre = f"Variante D{dia}-{letra}"
         if con.execute("SELECT 1 FROM estrategias WHERE nombre = ?", (nombre,)).fetchone():
             continue  # ya hubo una revisión este mismo día
+        prueba = (f" En {n} apuestas fantasma habría tenido CLV {media:+.2%} (la Principal, {base[1]:+.2%})."
+                  if n >= 30 else "")
         con.execute("INSERT INTO estrategias (nombre, tipo, rol, descripcion, parametros, creada) "
                     "VALUES (?, 'valor', 'retadora', ?, ?, ?)",
                     (nombre, f"Principal con {cambios}", json.dumps(parametros), iso(ahora())))
         activas.append(parametros)
-        anotar(con, "nueva", f"Nueva retadora {nombre}: la Principal con {cambios}.")
+        anotar(con, "nueva", f"Nueva retadora {nombre}: la Principal con {cambios}.{prueba}")
 
     guardar_estado(con, "ultima_revision", iso(ahora()))
     con.commit()

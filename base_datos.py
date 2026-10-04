@@ -116,6 +116,29 @@ CREATE TABLE IF NOT EXISTS pronosticos (
     resultado TEXT                  -- local, empate, visitante, sin_dato
 );
 
+-- Apuestas fantasma: cada precio interesante que el bot vio (lo haya apostado o no). Al empezar el partido se mide
+-- su CLV: así el cerebro y el laboratorio aprenden de cientos de mediciones al día sin arriesgar la banca.
+CREATE TABLE IF NOT EXISTS senales (
+    id INTEGER PRIMARY KEY,
+    evento_id TEXT NOT NULL,
+    deporte TEXT NOT NULL,
+    liga TEXT,
+    casa TEXT NOT NULL,
+    seleccion TEXT NOT NULL,
+    momio REAL NOT NULL,            -- con el deslizamiento, como se habría apostado
+    prob_justa REAL NOT NULL,       -- precio justo de Pinnacle en ese momento
+    valor REAL NOT NULL,
+    margen_ref REAL,
+    capturado TEXT NOT NULL,
+    inicio TEXT NOT NULL,
+    prob_cierre REAL,
+    clv REAL,
+    clv_fuente TEXT,
+    revisado INTEGER NOT NULL DEFAULT 0,
+    UNIQUE (evento_id, casa, seleccion, momio)
+);
+CREATE INDEX IF NOT EXISTS ix_senales_pendientes ON senales(revisado, inicio);
+
 -- Diario del apostador virtual: lo que hizo y pensó cada día (JSON con secciones)
 CREATE TABLE IF NOT EXISTS diario (
     dia TEXT PRIMARY KEY,           -- fecha local AAAA-MM-DD
