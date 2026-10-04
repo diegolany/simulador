@@ -12,7 +12,7 @@ import urllib.request
 from datetime import timedelta, timezone
 from difflib import SequenceMatcher
 
-from base_datos import a_fecha, ahora, iso
+from base_datos import a_fecha, ahora, anotar, iso
 from momios import americano_a_decimal, probabilidades_justas
 
 URL = "https://site.api.espn.com/apis/site/v2/sports/{ruta}/scoreboard?dates={fecha}&limit=300"
@@ -152,19 +152,30 @@ def _nombres(equipo: dict) -> list[str]:
     return [equipo[k] for k in ("displayName", "shortDisplayName", "name", "location") if equipo.get(k)]
 
 
-def _partidos(eventos: list) -> list[dict]:
+def _partidos(eventos: list, con_ganador: bool = False) -> list[dict]:
+    """`con_ganador`: en deportes sin empate (hockey, americano...) un empate terminado se decide con la marca de
+    ganador de ESPN (tanda de penales del hockey): el ganador suma 1, como en el marcador oficial. En fútbol no se
+    usa: la apuesta a ganador se decide en 90 minutos aunque luego haya penales."""
     partidos = []
     for ev in eventos:
         competidores = {c.get("homeAway"): c for c in ev.get("competitions", [{}])[0].get("competitors", [])}
         if "home" not in competidores or "away" not in competidores or "date" not in ev:
             continue
         estado = ev.get("status", {}).get("type", {})
+        goles = {lado: competidores[lado].get("score") for lado in ("home", "away")}
+        if con_ganador and estado.get("completed") and goles["home"] == goles["away"]:
+            for lado in ("home", "away"):
+                if competidores[lado].get("winner") is True:
+                    try:
+                        goles[lado] = str(int(float(goles[lado])) + 1)
+                    except (TypeError, ValueError):
+                        pass
         partidos.append({
             "inicio": a_fecha(ev["date"]),
             "local": _nombres(competidores["home"].get("team", {})),
             "visitante": _nombres(competidores["away"].get("team", {})),
-            "goles_local": competidores["home"].get("score"),
-            "goles_visitante": competidores["away"].get("score"),
+            "goles_local": goles["home"],
+            "goles_visitante": goles["away"],
             "fase": estado.get("state"),            # pre, in, post
             "terminado": bool(estado.get("completed")),
             "detalle": estado.get("shortDetail") or estado.get("description"),
@@ -219,7 +230,7 @@ def candidatos(deporte: str, inicio, cache: dict) -> list[dict]:
                 elif deporte == "mma_mixed_martial_arts":
                     cache[clave] = _peleas(fecha)
                 else:
-                    cache[clave] = _partidos(_pedir(deporte, fecha))
+                    cache[clave] = _partidos(_pedir(deporte, fecha), con_ganador=not deporte.startswith("soccer"))
             except (urllib.error.URLError, OSError, ValueError, KeyError, TypeError):
                 cache[clave] = []
         lista += cache[clave]
@@ -314,6 +325,41 @@ def resolver_pronosticos(con, limite: int = 200) -> int:
         resueltos += 1
     con.commit()
     return resueltos
+
+
+def revisar_empates(con) -> int:
+    """Corrección única: partidos de deportes sin empate (hockey, americano...) que quedaron empatados porque ESPN
+    todavía no sumaba el gol de la tanda de penales. Se vuelve a leer el marcador final y sus apuestas vuelven a
+    'abierta' para liquidarlas bien. Devuelve cuántos partidos se corrigieron."""
+    cache, corregidos = {}, 0
+    for ev in con.execute("""SELECT id, deporte, local, visitante, inicio FROM eventos
+                             WHERE terminado = 1 AND marcador_local = marcador_visitante AND deporte NOT LIKE 'soccer%'
+                               AND deporte NOT IN ('basketball_euroleague', 'mma_mixed_martial_arts')
+                               AND id IN (SELECT evento_id FROM apuestas)""").fetchall():
+        if not cubierto(ev["deporte"]):
+            continue
+        inicio = a_fecha(ev["inicio"])
+        partido, invertido = emparejar(ev["local"], ev["visitante"], inicio, candidatos(ev["deporte"], inicio, cache), 3)
+        if not partido or not partido["terminado"]:
+            continue
+        try:
+            goles = [int(float(partido["goles_local"])), int(float(partido["goles_visitante"]))]
+        except (TypeError, ValueError):
+            continue
+        if invertido:
+            goles.reverse()
+        if goles[0] == goles[1]:
+            continue  # empate real (ej. NFL tras tiempo extra): se queda como está
+        con.execute("UPDATE eventos SET marcador_local = ?, marcador_visitante = ? WHERE id = ?", (*goles, ev["id"]))
+        con.execute("""UPDATE apuestas SET estado = 'abierta', ganancia = NULL, liquidada = NULL
+                       WHERE evento_id = ? AND estado IN ('ganada', 'perdida', 'anulada') AND nota IS NULL""", (ev["id"],))
+        con.execute("UPDATE pronosticos SET resultado = ? WHERE evento_id = ?",
+                    ("local" if goles[0] > goles[1] else "visitante", ev["id"]))
+        anotar(con, "sistema", f"Corrección: {ev['local']} vs {ev['visitante']} terminó {goles[0]}-{goles[1]} (se definió en "
+                               f"la tanda de penales); sus apuestas se vuelven a liquidar con el ganador correcto.")
+        corregidos += 1
+    con.commit()
+    return corregidos
 
 
 def actualizar(con) -> tuple[int, int]:

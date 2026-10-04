@@ -203,6 +203,16 @@ def _cartera(apuestas: list[dict], inicial: float, inicio, momento, objetivos: l
             "curva": _curva(liquidadas, inicial, inicio, objetivos, momento), "deportes": deportes, "ligas": ligas}
 
 
+def historiales(con) -> dict:
+    """Todas las apuestas de cada estrategia (abiertas y cerradas), para el historial del laboratorio. Va en un
+    archivo aparte que la página solo pide al abrir una estrategia: crece con cada apuesta y haría lento el tablero."""
+    por_estrategia = {}
+    for a in con.execute("""SELECT a.*, e.local, e.visitante, e.marcador_local, e.marcador_visitante
+                            FROM apuestas a JOIN eventos e ON e.id = a.evento_id ORDER BY a.colocada DESC"""):
+        por_estrategia.setdefault(a["estrategia"], []).append(_fila(dict(a)))
+    return por_estrategia
+
+
 def estado(con, config: dict) -> dict:
     momento = ahora()
     inicial = config["banca_inicial"]
@@ -255,10 +265,6 @@ def estado(con, config: dict) -> dict:
 
     historial = [_fila(a) for a in sorted((a for a in todas if a["estado"] != "abierta"),
                                           key=lambda a: a["liquidada"], reverse=True)[:150]]
-    # Todas las apuestas de cada estrategia (abiertas y cerradas) para ver su historial en el laboratorio
-    por_estrategia = {}
-    for a in sorted(todas, key=lambda a: a["colocada"], reverse=True):
-        por_estrategia.setdefault(a["estrategia"], []).append(_fila(a))
 
     # Laboratorio: todas las estrategias compitiendo, cada una con su banca. La confianza usa el CLV encogido:
     # ya descuenta la suerte de tener muchas estrategias compitiendo a la vez
@@ -298,7 +304,6 @@ def estado(con, config: dict) -> dict:
         "dia": (momento - inicio).days + 1,
         "banca_inicial": inicial,
         **principal,
-        "apuestas_por_estrategia": por_estrategia,
         "clv_objetivo": config["clv_objetivo"],
         "activas": activas,
         "historial": historial,

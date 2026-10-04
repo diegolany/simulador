@@ -584,17 +584,20 @@ def _resultado(seleccion: str, local: str, visitante: str, goles_local: int, gol
     return "ganada" if seleccion == ganador else "perdida"
 
 
-def liquidar(con) -> int:
+def liquidar(con, referencia: str = "pinnacle") -> int:
     """Cierra las apuestas de partidos terminados. Devuelve cuántas se liquidaron."""
     momento = iso(ahora())
     filas = con.execute(
-        """SELECT a.id, a.seleccion, a.momio, a.monto, e.local, e.visitante, e.marcador_local,
+        """SELECT a.id, a.seleccion, a.momio, a.monto, a.casa, e.local, e.visitante, e.marcador_local,
                   e.marcador_visitante, e.id AS evento_id
            FROM apuestas a JOIN eventos e ON e.id = a.evento_id
            WHERE a.estado = 'abierta' AND e.terminado = 1""").fetchall()
     for f in filas:
-        hay_empate = con.execute("SELECT 1 FROM momios WHERE evento_id = ? AND seleccion = 'Draw' LIMIT 1",
-                                 (f["evento_id"],)).fetchone() is not None
+        # ¿El mercado de la apuesta tenía empate? Se mira la casa de la apuesta y la referencia, no cualquier casa:
+        # algunas casas europeas listan el hockey a 3 vías aunque la apuesta fue al de 2 vías
+        hay_empate = f["seleccion"] == "Draw" or con.execute(
+            "SELECT 1 FROM momios WHERE evento_id = ? AND seleccion = 'Draw' AND casa IN (?, ?) LIMIT 1",
+            (f["evento_id"], f["casa"], referencia)).fetchone() is not None
         estado = _resultado(f["seleccion"], f["local"], f["visitante"], f["marcador_local"],
                             f["marcador_visitante"], hay_empate)
         ganancia = {"ganada": f["monto"] * (f["momio"] - 1), "perdida": -f["monto"], "anulada": 0.0}[estado]

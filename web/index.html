@@ -802,6 +802,16 @@ function boletos(d) {
   const n = todasEst.length, nc = todasEst.filter(x => x.fuente !== 'draftkings').length, ng = n - nc;
   $('#reparto-origen').textContent = n ? `💳 Créditos ${nc} (${pct(nc / n, 0)}) · 🆓 DraftKings ${ng} (${pct(ng / n, 0)})` : '';
   $('#conteo-activas').textContent = d.activas.filter(a => a.estrategia === 'Principal').length || '';
+  // Con el marcador en vivo: ¿la apuesta va ganando o perdiendo?
+  const marcha = a => {
+    const [l, v] = (a.marcador || '').split('-').map(Number);
+    if (!a.marcador || isNaN(l) || isNaN(v) || !['en_juego', 'esperando_resultado'].includes(a.fase)) return '';
+    const lado = a.seleccion === 'Empate' ? 0 : a.seleccion === a.local ? 1 : a.seleccion === a.visitante ? -1 : null;
+    if (lado === null) return '';
+    const va = lado === 0 ? (l === v ? 1 : -1) : Math.sign((l - v) * lado);
+    return ' ' + (va > 0 ? '<span class="chip bueno">Va ganando</span>' : va < 0 ? '<span class="chip malo">Va perdiendo</span>'
+      : '<span class="chip">Va empatado</span>');
+  };
   $('#activas').innerHTML = lista.length ? lista.map(a => {
     const enVivo = a.fase === 'en_juego';
     const cancelado = /cancel|abandon/i.test(a.detalle || '');
@@ -816,7 +826,7 @@ function boletos(d) {
         · Apostada: ${fecha(a.colocada)}${a.fase === 'pospuesto' ? (cancelado ? ' · Se canceló: se devuelve el dinero.'
           : ` · Se pospuso: si no se juega antes del ${fecha(new Date(new Date(a.pospuesto).getTime() + 48 * 3.6e6).toISOString())}, se devuelve el dinero.`) : ''}</div>
       <div class="eleccion">
-        <div><div class="chica">Apuesta</div><b>${esc(a.seleccion)}</b><div class="chica">${esc(a.casa)} · ${esc(a.estrategia)}</div>
+        <div><div class="chica">Apuesta</div><b>${esc(a.seleccion)}</b>${marcha(a)}<div class="chica">${esc(a.casa)} · ${esc(a.estrategia)}</div>
           <a class="chica" style="color:var(--serie-1)" target="_blank" rel="noopener"
              href="https://duckduckgo.com/?q=${encodeURIComponent('!ducky site:oddsportal.com ' + a.local + ' ' + a.visitante)}">🔎 Ver en OddsPortal</a></div>
         <div class="momio">${a.momio.toFixed(2)}<small>${americano(a.momio)}</small></div>
@@ -824,9 +834,9 @@ function boletos(d) {
       ${a.razon ? `<div class="chica" style="padding:0 14px 10px">💭 ${esc(a.razon)}</div>` : ''}
       <div class="boleto-pie">
         <div>Monto<b>${dinero.format(a.monto)}</b></div>
-        <div>Ganaría<b>${dinero.format(a.potencial)}</b></div>
+        <div title="Ganancia limpia. Además se recupera lo apostado: cobraría ${dinero.format(a.monto + a.potencial)} en total. Si pierde, se pierde el monto.">Utilidad si gana<b>${dinero.format(a.potencial)}</b>cobra ${dinero.format(a.monto + a.potencial)}</div>
         <div title="Valor contra el precio justo; abajo, la ventaja real que estimó el cerebro">Valor<b>${conSigno(a.valor, spct(a.valor))}</b>${a.ventaja != null ? `cerebro ${spct(a.ventaja)}` : ''}</div>
-        <div>Mercado<b>${a.movimiento == null ? '<span class="tenue">—</span>' : conSigno(a.movimiento, spct(a.movimiento))}</b></div>
+        <div title="Mi momio contra el precio justo más reciente de Pinnacle: positivo = el mercado se movió a mi favor después de apostar">CLV hoy<b>${a.movimiento == null ? '<span class="tenue">—</span>' : conSigno(a.movimiento, spct(a.movimiento))}</b></div>
       </div>
     </article>`;
   }).join('') : `<div class="vacio">${filtro === 'Principal'
@@ -924,11 +934,24 @@ function evidencia(d) {
 const origen = f => f === 'draftkings' ? '<span class="chip bueno" title="Momio gratuito de DraftKings (ESPN)">🆓 DraftKings</span>'
   : '<span class="chip azul" title="Momio de una descarga pagada con créditos">💳 Créditos</span>';
 
-let estrategiaVista = null, origenDetalle = 'todos';
+let estrategiaVista = null, origenDetalle = 'todos', historiales = null, historialesHora = 0;
+// El historial completo de cada estrategia va en un archivo aparte: solo se pide al abrir una estrategia
+async function cargarHistoriales() {
+  if (historiales && Date.now() - historialesHora < 120000) return;
+  try {
+    const r = await fetch(ESTATICO ? `historial.json?t=${Date.now()}` : '/api/historial', { cache: 'no-store' });
+    historiales = await r.json(); historialesHora = Date.now();
+  } catch (e) { historiales = historiales || {}; }
+}
 function detalleEstrategia(d) {
   const caja = $('#detalle-estrategia');
-  const completa = estrategiaVista && (d.apuestas_por_estrategia || {})[estrategiaVista];
-  if (!completa) { caja.innerHTML = ''; return; }
+  if (estrategiaVista && !historiales) {
+    caja.innerHTML = '<div class="vacio" style="margin-top:16px">Cargando historial…</div>';
+    cargarHistoriales().then(() => datos && detalleEstrategia(datos));
+    return;
+  }
+  const completa = estrategiaVista && (historiales || {})[estrategiaVista];
+  if (!completa) { caja.innerHTML = estrategiaVista ? '<div class="vacio" style="margin-top:16px">Esta estrategia todavía no tiene apuestas.</div>' : ''; return; }
   const lista = completa.filter(h => origenDetalle === 'todos' || h.fuente === origenDetalle);
   const info = (d.laboratorio || []).find(e => e.nombre === estrategiaVista) || {};
   const po = info.por_origen || {};
@@ -971,6 +994,7 @@ document.addEventListener('click', e => {
   e.preventDefault();
   estrategiaVista = ver ? ver.dataset.ver : null;
   origenDetalle = 'todos';
+  if (ver && historiales && Date.now() - historialesHora >= 120000) historiales = null;  // trae lo más nuevo
   if (datos) detalleEstrategia(datos);
   if (ver) $('#detalle-estrategia').scrollIntoView({ behavior: 'smooth' });
 });

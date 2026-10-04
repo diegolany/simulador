@@ -237,6 +237,9 @@ def ciclo(con, config: dict, forzar_barrido: bool = False) -> None:
         con.execute("""UPDATE consumo_api SET senales = 0 WHERE endpoint = 'odds' AND fecha < '2026-10-02T12:00:00'
                        AND deporte IN ('icehockey_nhl', 'mma_mixed_martial_arts')""")
         guardar_estado(con, "partidos_retroactivo", True)
+    if not leer_estado(con, "correccion_empates"):  # una vez: hockey que quedó empatado sin el gol de la tanda
+        if _seguro("Corrección de empates", marcadores.revisar_empates, con) is not None:
+            guardar_estado(con, "correccion_empates", True)
 
     vivos, terminados = _seguro("Marcadores ESPN", marcadores.actualizar, con) or (0, 0)  # gratis
     if vivos or terminados:
@@ -247,7 +250,7 @@ def ciclo(con, config: dict, forzar_barrido: bool = False) -> None:
         nuevos, costo = descargar_resultados(con, config, deporte)
         restantes -= costo
         log(f"Resultados {activos.get(deporte, deporte)}: {nuevos} partidos terminados")
-    liquidadas = estrategias.liquidar(con)
+    liquidadas = estrategias.liquidar(con, config["casa_referencia"])
     if liquidadas:
         log(f"Se liquidaron {liquidadas} apuestas")
     estrategias.calcular_clv(con, config)
@@ -321,7 +324,7 @@ def apuestas_gratuitas(con, config: dict, manual: bool = False) -> None:
 def analizar_sin_gastar(con, config: dict) -> None:
     """Marcadores, liquidación, CLV y apuestas nuevas con los momios ya descargados: 0 créditos."""
     _seguro("Marcadores ESPN", marcadores.actualizar, con)
-    estrategias.liquidar(con)
+    estrategias.liquidar(con, config["casa_referencia"])
     estrategias.calcular_clv(con, config)
     _seguro("Modo objetivo", riesgo.modo_objetivo, con, config)
     capturas, nuevas = estrategias.reanalizar(con, config, config["minutos_reanalisis"])
@@ -341,6 +344,7 @@ def exportar(con, config: dict, carpeta: Path) -> None:
     version = hashlib.sha1(pagina.encode("utf-8")).hexdigest()[:10]  # la página se recarga sola si cambia
     datos = {**tablero.estado(con, config), "version": version}
     (carpeta / "estado.json").write_text(json.dumps(datos, ensure_ascii=False), encoding="utf-8")
+    (carpeta / "historial.json").write_text(json.dumps(tablero.historiales(con), ensure_ascii=False), encoding="utf-8")
     (carpeta / "index.html").write_text(pagina.replace("__VERSION__", version), encoding="utf-8")
 
 
@@ -366,10 +370,11 @@ class Tablero(SimpleHTTPRequestHandler):
         super().__init__(*args, directory=str(CARPETA / "web"), **kwargs)
 
     def do_GET(self):
-        if self.path.startswith("/api/estado"):
+        if self.path.startswith(("/api/estado", "/api/historial")):
             con = conectar()
             try:
-                self._json(tablero.estado(con, cargar_config()))
+                self._json(tablero.historiales(con) if self.path.startswith("/api/historial")
+                           else tablero.estado(con, cargar_config()))
             finally:
                 con.close()
         else:
