@@ -804,13 +804,17 @@ function boletos(d) {
   $('#conteo-activas').textContent = d.activas.filter(a => a.estrategia === 'Principal').length || '';
   $('#activas').innerHTML = lista.length ? lista.map(a => {
     const enVivo = a.fase === 'en_juego';
-    const estado = a.fase === 'por_empezar' ? `<span>⏳ ${cuenta(a.inicio) || 'Empezando'}</span>`
+    const cancelado = /cancel|abandon/i.test(a.detalle || '');
+    const estado = a.fase === 'pospuesto' ? `<span class="chip" title="${cancelado ? 'Se devuelve el dinero'
+          : 'Si no se juega en 48 h se devuelve el dinero, como en las casas'}">⏸ ${cancelado ? 'Cancelado' : 'Pospuesto'}</span>`
+      : a.fase === 'por_empezar' ? `<span>⏳ ${cuenta(a.inicio) || 'Empezando'}</span>`
       : enVivo ? `<span class="vivo">EN VIVO${a.marcador ? ` · ${esc(a.marcador)}` : ''}</span>` : '<span class="tenue">Esperando resultado</span>';
     return `<article class="boleto ${enVivo ? 'en-vivo' : ''}">
       <div class="boleto-cabeza"><span>${emoji(a.deporte)} ${esc(a.liga)} ${origen(a.fuente)}</span>${estado}</div>
       <div class="equipos">${esc(a.local)} <span class="vs">vs</span> ${esc(a.visitante)}</div>
       <div class="chica" style="padding:2px 14px 0">Partido: ${fecha(a.inicio)}${enVivo && a.detalle ? ' · ' + esc(a.detalle) : ''}
-        · Apostada: ${fecha(a.colocada)}</div>
+        · Apostada: ${fecha(a.colocada)}${a.fase === 'pospuesto' ? (cancelado ? ' · Se canceló: se devuelve el dinero.'
+          : ` · Se pospuso: si no se juega antes del ${fecha(new Date(new Date(a.pospuesto).getTime() + 48 * 3.6e6).toISOString())}, se devuelve el dinero.`) : ''}</div>
       <div class="eleccion">
         <div><div class="chica">Apuesta</div><b>${esc(a.seleccion)}</b><div class="chica">${esc(a.casa)} · ${esc(a.estrategia)}</div>
           <a class="chica" style="color:var(--serie-1)" target="_blank" rel="noopener"

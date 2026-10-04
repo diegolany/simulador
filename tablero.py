@@ -212,7 +212,7 @@ def estado(con, config: dict) -> dict:
     objetivos = config["objetivos_semana"]
 
     todas = [dict(r) for r in con.execute(
-        """SELECT a.*, e.local, e.visitante, e.marcador_local, e.marcador_visitante, e.detalle
+        """SELECT a.*, e.local, e.visitante, e.marcador_local, e.marcador_visitante, e.detalle, e.pospuesto
            FROM apuestas a JOIN eventos e ON e.id = a.evento_id ORDER BY a.colocada""")]
     principal = _cartera([a for a in todas if a["estrategia"] == "Principal"], inicial, inicio, momento, objetivos)
 
@@ -223,7 +223,9 @@ def estado(con, config: dict) -> dict:
             continue
         inicio_partido = a_fecha(a["inicio"])
         duracion = config["duracion_horas"].get(a["deporte"].split("_")[0], 4)
-        if momento < inicio_partido:
+        if a["pospuesto"]:
+            fase = "pospuesto"  # se devuelve el dinero si no se juega en 48 h (o de inmediato si se canceló)
+        elif momento < inicio_partido:
             fase = "por_empezar"
         elif a["detalle"] or momento < inicio_partido + timedelta(hours=duracion):
             fase = "en_juego"
@@ -241,7 +243,7 @@ def estado(con, config: dict) -> dict:
             "deporte": nombre_deporte(a["deporte"]), "inicio": a["inicio"], "colocada": a["colocada"], "fase": fase,
             "marcador": (f"{a['marcador_local']}-{a['marcador_visitante']}"
                          if a["marcador_local"] is not None else None),
-            "detalle": a["detalle"],
+            "detalle": a["detalle"], "pospuesto": a["pospuesto"],
             "seleccion": "Empate" if a["seleccion"] == "Draw" else a["seleccion"], "casa": a["casa"],
             "momio": a["momio"], "americano": decimal_a_americano(a["momio"]), "monto": a["monto"],
             "potencial": a["monto"] * (a["momio"] - 1), "prob": a["prob_justa"], "valor": a["valor"],

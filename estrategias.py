@@ -600,6 +600,23 @@ def liquidar(con) -> int:
         ganancia = {"ganada": f["monto"] * (f["momio"] - 1), "perdida": -f["monto"], "anulada": 0.0}[estado]
         con.execute("UPDATE apuestas SET estado = ?, ganancia = ?, liquidada = ? WHERE id = ?",
                     (estado, round(ganancia, 2), momento, f["id"]))
+    # Partido pospuesto o suspendido: como en las casas, se devuelve el dinero si no se juega en 48 h;
+    # si se canceló o se abandonó, de inmediato. El CLV de esas apuestas no cuenta.
+    limite_pospuesto = iso(ahora() - timedelta(hours=48))
+    for ev in con.execute("""SELECT DISTINCT e.id, e.local, e.visitante, e.detalle FROM eventos e
+                             JOIN apuestas a ON a.evento_id = e.id
+                             WHERE a.estado = 'abierta' AND e.terminado = 0 AND e.pospuesto IS NOT NULL
+                               AND (e.pospuesto <= ? OR lower(COALESCE(e.detalle, '')) LIKE '%cancel%'
+                                    OR lower(COALESCE(e.detalle, '')) LIKE '%abandon%')""",
+                          (limite_pospuesto,)).fetchall():
+        cancelado = any(p in (ev["detalle"] or "").lower() for p in ("cancel", "abandon"))
+        cur = con.execute("""UPDATE apuestas SET estado = 'anulada', ganancia = 0, liquidada = ?, clv = NULL,
+                                    clv_fuente = NULL, nota = ? WHERE evento_id = ? AND estado = 'abierta'""",
+                          (momento, "Partido cancelado: se devuelve el dinero" if cancelado
+                           else "Partido pospuesto y no se jugó en 48 h: se devuelve el dinero", ev["id"]))
+        anotar(con, "sistema", f"{ev['local']} vs {ev['visitante']} {'se canceló' if cancelado else 'se pospuso y no se jugó en 48 h'}"
+                               f": se anularon {cur.rowcount} apuestas y se devolvió el dinero (regla de las casas).")
+
     # Sin resultado después de 4 días (la API solo guarda 3): se anula y se devuelve el dinero
     limite = iso(ahora() - timedelta(days=4))
     cur = con.execute("""UPDATE apuestas SET estado = 'anulada', ganancia = 0, liquidada = ?,

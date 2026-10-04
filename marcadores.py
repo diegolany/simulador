@@ -333,8 +333,10 @@ def actualizar(con) -> tuple[int, int]:
                                        30 if ev["deporte"] in VENTANA_AMPLIA else 3)
         if not partido or partido["fase"] == "pre":
             continue
-        if partido["fase"] == "post" and not partido["terminado"]:  # suspendido o pospuesto
-            con.execute("UPDATE eventos SET detalle = ? WHERE id = ?", (partido["detalle"], ev["id"]))
+        if partido["fase"] == "post" and not partido["terminado"]:  # pospuesto, suspendido o cancelado
+            # Las 48 h de las casas cuentan desde la hora original del partido
+            con.execute("UPDATE eventos SET detalle = ?, pospuesto = COALESCE(pospuesto, MIN(?, inicio)) WHERE id = ?",
+                        (partido["detalle"], iso(ahora()), ev["id"]))
             continue
         try:
             goles_local, goles_visitante = int(float(partido["goles_local"])), int(float(partido["goles_visitante"]))
@@ -343,8 +345,9 @@ def actualizar(con) -> tuple[int, int]:
         if invertido:
             goles_local, goles_visitante = goles_visitante, goles_local
         terminado = int(partido["fase"] == "post")
-        con.execute("""UPDATE eventos SET marcador_local = ?, marcador_visitante = ?, detalle = ?, terminado = ?
-                       WHERE id = ?""", (goles_local, goles_visitante, partido["detalle"], terminado, ev["id"]))
+        con.execute("""UPDATE eventos SET marcador_local = ?, marcador_visitante = ?, detalle = ?, terminado = ?,
+                       pospuesto = NULL WHERE id = ?""",  # se está jugando: ya no está pospuesto
+                    (goles_local, goles_visitante, partido["detalle"], terminado, ev["id"]))
         terminados += terminado
         vivos += 1 - terminado
     con.commit()
