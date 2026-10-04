@@ -25,7 +25,7 @@ PARAMETROS_BASE = {
     "momio_max": 5.0,
     "horas_min": 0.17,      # no apostar a menos de 10 minutos del inicio
     "horas_max": 48,
-    "kelly": 0.25,          # fracción de Kelly
+    "kelly": 0.5,           # fracción de Kelly (½: el cerebro ya hace conservadora la ventaja estimada)
     "tope": 0.02,           # máximo 2% de la banca por apuesta
     "ligas_bloqueadas": [],
     "casas_bloqueadas": [],
@@ -240,11 +240,12 @@ def _registrar(con, est: dict, ev, sel: str, casa: str, momio: float, visto: flo
     con.execute(
         """INSERT INTO apuestas (estrategia, evento_id, deporte, liga, mercado, seleccion, casa, momio, momio_ref,
                                  prob_justa, valor, monto, colocada, inicio, razon, momio_visto, margen_ref,
-                                 ventaja_estimada, minutos_precio, multiplicador, analisis)
-           VALUES (?, ?, ?, ?, 'h2h', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                                 ventaja_estimada, minutos_precio, multiplicador, analisis, kelly)
+           VALUES (?, ?, ?, ?, 'h2h', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         (est["nombre"], ev["id"], ev["deporte"], ev["liga"], sel, casa, momio, momio_ref, prob,
          valor_esperado(prob, momio), monto, colocada, ev["inicio"], razon, visto, round(margen, 4),
-         round(ventaja, 4) if ventaja is not None else None, minutos, multiplicador, analisis))
+         round(ventaja, 4) if ventaja is not None else None, minutos, multiplicador, analisis,
+         None if est["p"].get("fijo") else est["p"]["kelly"]))
 
 
 def _analisis(p: dict, probs: dict, referencia: str, margen_ref: float, sel: str, visto: float, momio: float,
@@ -370,9 +371,9 @@ def colocar_apuestas(con, config: dict, capturado: str) -> tuple[dict, int]:
                     estimada, aj = v, []
                     if p["cerebro"]:
                         estimada, aj = ctx.mente.estimar(v, cerebro.rasgos(ev["liga"], o["casa"], o["momio"], horas, margen, o["sel"]))
-                        if estimada <= 0:
+                        if estimada < config["cerebro"]["ventaja_minima"]:
                             ctx.descartadas += 1
-                            continue  # el cerebro no ve ventaja real en este tipo de apuesta
+                            continue  # el cerebro no ve ventaja real que valga la pena en este tipo de apuesta
                     candidatas.append((estimada, o, aj))
                 if not candidatas:
                     continue
@@ -395,7 +396,7 @@ def colocar_apuestas(con, config: dict, capturado: str) -> tuple[dict, int]:
             analisis = None
             if est["tipo"] == "valor":
                 razon = _razon_valor(casa, sel, visto, momio, prob, horas, monto, actual, ventaja, ajustes, notas,
-                                     referencia=nombre_ref)
+                                     referencia=nombre_ref, kelly=p["kelly"])
                 analisis = _analisis(p, probs, nombre_ref, margen, sel, visto, momio, desliz, ventaja, ajustes,
                                      ctx.mente.factor, fraccion, monto, actual, notas, multiplicador, horas,
                                      [(o["casa"], o["visto"]) for o in ofertas if o["sel"] == sel]
@@ -418,7 +419,7 @@ def _nombre(seleccion: str) -> str:
 
 def _razon_valor(casa: str, sel: str, visto: float, momio: float, prob: float, horas: float, monto: int,
                  actual: float, ventaja: float | None = None, ajustes=(), notas=(), extra: str = "",
-                 fijo: bool = False, referencia: str = "Pinnacle") -> str:
+                 fijo: bool = False, referencia: str = "Pinnacle", kelly: float = 0.5) -> str:
     texto = f"{casa} paga {visto:.2f} por {_nombre(sel)}"
     if momio < visto:
         texto += f" (cuento {momio:.2f} por el movimiento del precio al apostar)"
@@ -427,8 +428,9 @@ def _razon_valor(casa: str, sel: str, visto: float, momio: float, prob: float, h
     if ventaja is not None:
         explicacion = cerebro.explicar(ajustes)
         texto += f" El cerebro estima la ventaja real en {ventaja:+.1%}" + (f" ({explicacion})." if explicacion else ".")
-    modo = ("monto fijo de experimento" if fijo else "¼ de Kelly sobre la ventaja estimada" if ventaja is not None
-            else "¼ de Kelly")
+    fraccion = {0.25: "¼", 0.5: "½", 1.0: "Kelly completo"}.get(kelly, f"{kelly:g}")
+    modo = ("monto fijo de experimento" if fijo else f"{fraccion} de Kelly sobre la ventaja estimada" if ventaja is not None
+            else f"{fraccion} de Kelly")
     texto += f" Faltan {horas:.0f} h. Apuesto ${monto:,.0f} ({monto / actual:.2%} de la banca, {modo})."
     if notas:
         texto += " Control de riesgo: " + "; ".join(notas) + "."
@@ -567,7 +569,7 @@ def _apostar_con_precios(con, config: dict, obtener_precio, minutos: float, nota
                 estimada, aj = v, []
                 if usa_cerebro:
                     estimada, aj = ctx.mente.estimar(v, cerebro.rasgos(ev["liga"], casa, ejecutados[s], horas, margen, s))
-                    if estimada <= 0:
+                    if estimada < config["cerebro"]["ventaja_minima"]:
                         ctx.descartadas += 1
                         continue
                 candidatas.append((estimada, s, aj))
@@ -575,7 +577,7 @@ def _apostar_con_precios(con, config: dict, obtener_precio, minutos: float, nota
                 continue
             estimada, sel, ajustes = max(candidatas, key=lambda c: c[0])
             momio = ejecutados[sel]
-            # Las estrategias de valor usan ¼ de Kelly; los experimentos, un monto fijo pequeño para medir
+            # Las estrategias de valor usan una fracción de Kelly; los experimentos, un monto fijo pequeño para medir
             fraccion = p.get("fijo") or fraccion_kelly(min(0.99, (1 + estimada) / momio), momio, p["kelly"], p["tope"])
             monto, actual, notas, multiplicador = _monto(ctx, est, fraccion, casa, ev["deporte"])
             if not monto:
@@ -591,7 +593,7 @@ def _apostar_con_precios(con, config: dict, obtener_precio, minutos: float, nota
                                  estimada if usa_cerebro else None, ajustes, notas,
                                  f" {nota}; precio justo de hace {edad:.1f} h."
                                  + (f" Experimento: {est['descripcion']}." if est["tipo"] == "gratis" else ""),
-                                 fijo=bool(p.get("fijo")), referencia=nombre_ref)
+                                 fijo=bool(p.get("fijo")), referencia=nombre_ref, kelly=p["kelly"])
             analisis = _analisis(p, probs, nombre_ref, margen, sel, precios[sel], momio, desliz,
                                  estimada if usa_cerebro else None, ajustes, ctx.mente.factor, fraccion, monto, actual,
                                  notas, multiplicador, horas,

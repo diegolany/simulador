@@ -65,6 +65,15 @@ def inicializar(con, config: dict) -> None:
                               "ventaja (en 18,700 partidos históricos sigue ganando: +4.9%, t = 2.7, con 27% más apuestas). "
                               "El cerebro apuesta menos en las de menor ventaja.")
         guardar_estado(con, "modo_objetivo_inicio", iso(ahora()))
+    if not leer_estado(con, "medio_kelly"):  # una vez: de ¼ a ½ de Kelly en las estrategias de valor
+        for nombre, parametros in con.execute("SELECT nombre, parametros FROM estrategias WHERE tipo = 'valor'").fetchall():
+            p = json.loads(parametros)
+            if p.get("kelly", 0.25) == 0.25:
+                con.execute("UPDATE estrategias SET parametros = ? WHERE nombre = ?", (json.dumps({**p, "kelly": 0.5}), nombre))
+        anotar(con, "ajuste", "Montos: de ¼ a ½ de Kelly. El cerebro ya hace conservadora la ventaja estimada, así que usar además "
+                              "solo ¼ de Kelly dejaba apuestas de $70 que no aportan nada. Ahora no se apuesta si la ventaja "
+                              "estimada es menor a 0.5%, y el modo objetivo sigue cuidando el riesgo total.")
+        guardar_estado(con, "medio_kelly", True)
     con.commit()
 
 
@@ -143,13 +152,25 @@ def puntajes_descarga(con, config: dict, cal: dict) -> dict:
     urgencia (partidos que empiezan pronto) x antigüedad de sus momios x valor por partido de la liga."""
     momento = ahora()
     valores = aprendizaje.valor_ligas(con, config, list(cal))
+    # Partidos próximos en los que la Principal ya apostó: volver a descargarlos sirve menos (solo al laboratorio y a
+    # las apuestas fantasma), así que pesan una cuarta parte
+    apostados = {}
+    for deporte, inicio in con.execute("""SELECT DISTINCT deporte, inicio FROM apuestas WHERE estrategia = 'Principal'
+                                          AND estado = 'abierta' AND inicio > ?""", (iso(momento),)):
+        apostados.setdefault(deporte, []).append(inicio)
     puntajes = {}
     for deporte, inicios in cal.items():
         urgencia = 0.0
+        ya = list(apostados.get(deporte, []))
         for texto in inicios:
+            if texto in ya:
+                ya.remove(texto)
+                peso = 0.25
+            else:
+                peso = 1.0
             horas = (a_fecha(texto) - momento).total_seconds() / 3600
             if horas > 0.17:
-                urgencia += 1.0 if horas <= 3 else 0.6 if horas <= 12 else 0.3 if horas <= 48 else 0.1
+                urgencia += peso * (1.0 if horas <= 3 else 0.6 if horas <= 12 else 0.3 if horas <= 48 else 0.1)
         ultima = _ultima_descarga(con, deporte)
         horas_desde = (momento - ultima).total_seconds() / 3600 if ultima else 99
         if urgencia == 0 or horas_desde < config["horas_min_entre_descargas"]:

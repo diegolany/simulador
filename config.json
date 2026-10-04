@@ -62,6 +62,7 @@
     "simulaciones": 1500
   },
   "cerebro": {
+    "ventaja_minima": 0.005,
     "factor_previo": 0.5,
     "factor_previo_max": 0.8,
     "fuerza_previa": 20,

@@ -1199,7 +1199,7 @@ function panelAnalisis(x) {
     const k = d.kelly;
     partes.push(`<div class="an-titulo">Cuánto apostar</div>
       <p>${k.fijo ? `Monto fijo de experimento: ${pct(k.fijo, 1)} de la banca.`
-        : `Kelly completo diría ${pct(k.completo, 2)} de la banca; por prudencia se usa ${k.fraccion === 0.25 ? '¼' : k.fraccion} de Kelly con tope de
+        : `Kelly completo diría ${pct(k.completo, 2)} de la banca; por prudencia se usa ${({ 0.25: '¼', 0.5: '½' })[k.fraccion] || k.fraccion} de Kelly con tope de
           ${pct(k.tope, 0)} → <b>${pct(k.elegida, 2)}</b>.`}
         ${k.multiplicador && k.multiplicador !== 1 ? ` Modo objetivo: ×${k.multiplicador}.` : ''}
         ${(d.notas || []).length ? ` Control de riesgo: ${esc(d.notas.join('; '))}.` : ''}

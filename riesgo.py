@@ -9,6 +9,7 @@
 - Exposición y salud de las cuentas: cuánto dinero está en juego y qué casas ya te habrían limitado.
 Todo se calcula con los datos del simulador: 0 créditos.
 """
+import json
 import math
 import random
 from statistics import NormalDist
@@ -240,7 +241,8 @@ def _poisson(rng: random.Random, lam: float) -> int:
 
 
 def proyeccion(apuestas: list[dict], respaldo: list[dict], inicial: float, inicio, momento, objetivos: list[float],
-               post: dict | None, pico: float, simulaciones: int = 2000, escala: float = 1.0) -> dict | None:
+               post: dict | None, pico: float, simulaciones: int = 2000, escala: float = 1.0,
+               kelly_actual: float = 0.25) -> dict | None:
     """Simula miles de futuros de la banca hasta el final del periodo con el ritmo de apuestas, los momios y los
     montos de la cartera, y la ventaja estimada (con su incertidumbre). `escala` multiplica los montos de las
     apuestas futuras (la agresividad del modo objetivo). Devuelve percentiles por día y las probabilidades de
@@ -250,8 +252,10 @@ def proyeccion(apuestas: list[dict], respaldo: list[dict], inicial: float, inici
     transcurrido = max(0.0, (momento - inicio).total_seconds() / 86400)
     if transcurrido >= dias_total:
         return None
-    # Fracción de la banca de cada apuesta sin la agresividad con la que se hizo; luego se aplica `escala`
-    fraccion = lambda a: a["monto"] / inicial / (a.get("multiplicador") or 1.0) * escala
+    # Fracción de la banca de cada apuesta sin la agresividad con la que se hizo (modo objetivo y fracción de Kelly
+    # de ese momento); luego se aplican la `escala` y la fracción de Kelly de hoy
+    fraccion = lambda a: (a["monto"] / inicial / (a.get("multiplicador") or 1.0) * escala
+                          * kelly_actual / (a.get("kelly") or 0.25))
     muestra = [(a["momio"], fraccion(a)) for a in validas]
     if len(muestra) < 8:  # pocas apuestas propias: se completa con las del resto del laboratorio
         muestra += [(a["momio"], fraccion(a)) for a in respaldo[:200]]
@@ -317,7 +321,8 @@ def proyeccion(apuestas: list[dict], respaldo: list[dict], inicial: float, inici
 _memoria = {}
 
 CAMPOS = """a.estrategia, a.evento_id, a.seleccion, a.casa, a.momio, a.monto, a.estado, a.ganancia, a.liquidada,
-            a.colocada, a.inicio, a.liga, a.deporte, a.prob_justa, a.prob_cierre, a.clv, a.valor, a.multiplicador"""
+            a.colocada, a.inicio, a.liga, a.deporte, a.prob_justa, a.prob_cierre, a.clv, a.valor, a.multiplicador,
+            a.kelly"""
 MULTIPLICADORES = (0.5, 0.75, 1.0, 1.25, 1.5)
 
 
@@ -348,7 +353,9 @@ def _datos(con, config: dict) -> dict:
     todas = [dict(r) for r in con.execute(f"SELECT {CAMPOS} FROM apuestas a ORDER BY a.colocada")]
     tipos = {r[0]: r[1] for r in con.execute("SELECT nombre, tipo FROM estrategias")}
     principal = [a for a in todas if a["estrategia"] == "Principal"]
-    return {"momento": momento, "inicial": inicial, "inicio": a_fecha(texto_inicio) if texto_inicio else momento,
+    fila = con.execute("SELECT parametros FROM estrategias WHERE nombre = 'Principal'").fetchone()
+    kelly = json.loads(fila[0]).get("kelly", 0.25) if fila else 0.25
+    return {"kelly": kelly,"momento": momento, "inicial": inicial, "inicio": a_fecha(texto_inicio) if texto_inicio else momento,
             "todas": todas, "tipos": tipos, "principal": principal, "post": posteriores_laboratorio(con).get("Principal"),
             "caidas": caidas(principal, inicial),
             "respaldo": [a for a in todas if tipos.get(a["estrategia"]) == "valor" and a["estrategia"] != "Principal"
@@ -357,7 +364,7 @@ def _datos(con, config: dict) -> dict:
 
 def _proyectar(d: dict, config: dict, simulaciones: int, escala: float) -> dict | None:
     return proyeccion(d["principal"], d["respaldo"], d["inicial"], d["inicio"], d["momento"], config["objetivos_semana"],
-                      d["post"], d["caidas"]["pico"], simulaciones, escala)
+                      d["post"], d["caidas"]["pico"], simulaciones, escala, d["kelly"])
 
 
 def modo_objetivo(con, config: dict) -> dict:
