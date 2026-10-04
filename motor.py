@@ -395,6 +395,8 @@ def exportar(con, config: dict, carpeta: Path) -> None:
     datos = {**tablero.estado(con, config), "version": version}
     (carpeta / "estado.json").write_text(json.dumps(datos, ensure_ascii=False), encoding="utf-8")
     (carpeta / "historial.json").write_text(json.dumps(tablero.historiales(con), ensure_ascii=False), encoding="utf-8")
+    (carpeta / "analisis.json").write_text(json.dumps(tablero.analisis_apuestas(con, config), ensure_ascii=False),
+                                           encoding="utf-8")
     (carpeta / "index.html").write_text(pagina.replace("__VERSION__", version), encoding="utf-8")
 
 
@@ -420,11 +422,15 @@ class Tablero(SimpleHTTPRequestHandler):
         super().__init__(*args, directory=str(CARPETA / "web"), **kwargs)
 
     def do_GET(self):
-        if self.path.startswith(("/api/estado", "/api/historial")):
+        if self.path.startswith(("/api/estado", "/api/historial", "/api/analisis")):
             con = conectar()
             try:
-                self._json(tablero.historiales(con) if self.path.startswith("/api/historial")
-                           else tablero.estado(con, cargar_config()))
+                if self.path.startswith("/api/historial"):
+                    self._json(tablero.historiales(con))
+                elif self.path.startswith("/api/analisis"):
+                    self._json(tablero.analisis_apuestas(con, cargar_config()))
+                else:
+                    self._json(tablero.estado(con, cargar_config()))
             finally:
                 con.close()
         else:

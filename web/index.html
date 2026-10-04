@@ -180,6 +180,26 @@ details summary { cursor: pointer; font-weight: 600; }
 .linea li + li::before { content: ""; position: absolute; left: 17px; top: -10px; height: 20px; width: 2px; background: var(--reticula); }
 .linea .icono { width: 36px; height: 36px; border-radius: 50%; display: grid; place-items: center; background: var(--superficie-2); font-size: 16px; }
 
+/* Diario: apuestas que se abren con su análisis completo */
+details.apuesta-detalle { border: 1px solid var(--borde); border-radius: 12px; margin: 8px 0; background: var(--superficie-2); }
+details.apuesta-detalle > summary { list-style: none; padding: 10px 12px 10px 32px; font-weight: 500; position: relative; }
+details.apuesta-detalle > summary::-webkit-details-marker { display: none; }
+details.apuesta-detalle > summary::before { content: "▸"; position: absolute; left: 12px; color: var(--serie-1); }
+details.apuesta-detalle[open] > summary::before { content: "▾"; }
+details.apuesta-detalle > summary .ver { color: var(--serie-1); font-size: 12px; white-space: nowrap; }
+.analisis-cuerpo { padding: 2px 14px 14px; border-top: 1px dashed var(--eje); }
+.an-titulo { font-size: 11.5px; text-transform: uppercase; letter-spacing: .05em; color: var(--tenue); font-weight: 600; margin: 14px 0 6px; }
+.an-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 8px; }
+.an-dato { background: var(--superficie); border: 1px solid var(--borde); border-radius: 10px; padding: 8px 10px; }
+.an-dato span { display: block; font-size: 11.5px; color: var(--tenue); }
+.an-dato b { font-size: 14px; }
+.analisis-cuerpo table { font-size: 12.5px; background: var(--superficie); border-radius: 10px; }
+.analisis-cuerpo tr.elegida td { background: var(--acento-suave); font-weight: 600; }
+.analisis-cuerpo p { margin: 6px 0; }
+.segmentado { display: inline-flex; border: 1px solid var(--borde); border-radius: 999px; overflow: hidden; }
+.segmentado button { border: 0; background: var(--superficie); color: var(--tinta-2); padding: 5px 12px; font-size: 12.5px; }
+.segmentado button.activo { background: var(--tinta); color: var(--pagina); }
+
 footer { margin-top: 28px; color: var(--tenue); font-size: 12.5px; line-height: 1.8; }
 [hidden] { display: none !important; }
 @media (max-width: 560px) {
@@ -240,17 +260,20 @@ footer { margin-top: 28px; color: var(--tenue); font-size: 12.5px; line-height: 
         </div>
         <div class="meta" id="meta"></div>
       </div>
-      <div class="leyenda">
-        <span><i class="muestra" style="border-color:var(--serie-1)"></i>Real</span>
-        <span><i class="muestra caja" style="background:color-mix(in srgb, var(--bueno) 30%, transparent)"></i>Ganancia</span>
-        <span><i class="muestra caja" style="background:color-mix(in srgb, var(--malo) 30%, transparent)"></i>Pérdida</span>
-        <span><i class="muestra" style="border-color:var(--eje)"></i>Punto de partida</span>
-        <span><i class="muestra rayada" style="border-color:var(--tenue)"></i>Objetivo</span>
-        <span><i class="muestra rayada" style="border-color:var(--serie-2)"></i>Esperado</span>
-        <span><i class="muestra caja" style="background:color-mix(in srgb, var(--serie-2) 22%, transparent)"></i>Rango normal por suerte</span>
+      <div style="display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:10px;margin:18px 0 8px">
+        <div class="leyenda" style="margin:0">
+          <span><i class="muestra" style="border-color:var(--serie-1);border-top-width:3px"></i>Banca real</span>
+          <span><i class="muestra rayada" style="border-color:var(--tenue)"></i>Objetivo</span>
+          <span><i class="muestra caja" style="background:color-mix(in srgb, var(--serie-2) 25%, transparent);border:1px dashed var(--serie-2)"></i>Lo esperado ± suerte normal</span>
+        </div>
+        <div class="segmentado" id="rango-curva">
+          <button data-rango="avance" class="activo">Lo que va</button>
+          <button data-rango="mes">Las 4 semanas</button>
+        </div>
       </div>
-      <div class="grafica"><canvas id="curva" role="img" aria-label="Banca real contra objetivo y esperado por día"></canvas></div>
-      <p class="ayuda" style="margin:10px 0 0">Mientras la línea azul esté dentro del área naranja, la diferencia contra lo esperado es suerte, no error del método.</p>
+      <div class="grafica"><canvas id="curva" role="img" aria-label="Banca real contra objetivo y lo esperado"></canvas></div>
+      <p class="ayuda" style="margin:10px 0 0">Verde arriba del punto de partida, rojo abajo. Mientras la banca real se mantenga dentro de la franja naranja,
+        la diferencia contra lo esperado es suerte normal, no error del método.</p>
     </div>
 
     <h3 class="seccion">Indicadores</h3>
@@ -696,38 +719,62 @@ function colores() {
   return { s1: v('--serie-1'), s2: v('--serie-2'), s3: v('--serie-3'), bueno: v('--bueno'), malo: v('--malo'), eje: v('--eje'), tenue: v('--tenue'), reticula: v('--reticula'), sup: v('--superficie') };
 }
 
+let rangoCurva = 'avance';
 function dibujarCurva(d) {
   if (!window.Chart) return;
   const k = colores(), c = d.curva, ini = d.banca_inicial;
-  const maxDia = Math.max(28, ...c.objetivo.map(p => p.x));
-  // Escala centrada en la banca inicial: ganancias y pérdidas se ven con el mismo espacio
-  const desvio = Math.max(ini * 0.01, ...[...c.real, ...c.objetivo, ...c.banda_alta, ...c.banda_baja].map(p => Math.abs(p.y - ini)));
+  const dias = c.dias || 28, hoy = c.hoy ?? (c.real.at(-1)?.x || 0);
+  // "Lo que va": del inicio a hoy (mínimo una semana); "Las 4 semanas": todo el periodo
+  const maxX = rangoCurva === 'mes' ? dias : Math.min(dias, Math.max(7, Math.ceil(hoy + 0.5)));
+  const objetivoEn = x => {  // objetivo en cualquier momento (interpolado entre días)
+    const i = Math.min(c.objetivo.length - 2, Math.floor(x)), a = c.objetivo[i], b = c.objetivo[i + 1] || a;
+    return a.y + (b.y - a.y) * (x - a.x);
+  };
+  const objetivo = [...c.objetivo.filter(p => p.x < maxX), { x: maxX, y: objetivoEn(maxX) }];
+  // Escala centrada en la banca inicial con lo visible: ganancias y pérdidas se ven con el mismo espacio
+  const visibles = [...c.real, ...c.banda_alta, ...c.banda_baja, ...objetivo].map(p => Math.abs(p.y - ini));
+  const desvio = Math.max(ini * 0.01, ...visibles) * 1.2;
+  const paso = desvio > 8000 ? 5000 : desvio > 4000 ? 2000 : desvio > 2000 ? 1000 : 500;  // montos redondos en el eje
+  const linea = { pointRadius: 0, pointHitRadius: 10, tension: 0 };
   const conjuntos = [
-    { label: 'Punto de partida', data: [{ x: 0, y: ini }, { x: maxDia, y: ini }], borderColor: k.eje, borderWidth: 1.5, pointRadius: 0 },
-    { label: 'banda_alta', data: c.banda_alta, borderWidth: 0, pointRadius: 0, fill: '+1', backgroundColor: `color-mix(in srgb, ${k.s2} 20%, transparent)` },
-    { label: 'banda_baja', data: c.banda_baja, borderWidth: 0, pointRadius: 0, fill: false },
-    { label: 'Esperado', data: c.esperado, borderColor: k.s2, borderDash: [4, 4], borderWidth: 2, pointRadius: 0 },
-    { label: 'Objetivo', data: c.objetivo, borderColor: k.tenue, borderDash: [6, 4], borderWidth: 2, pointRadius: 0 },
-    { label: 'Real', data: c.real, borderColor: k.s1, backgroundColor: k.s1, borderWidth: 2.5, pointRadius: 0, pointHoverRadius: 5,
-      pointHoverBorderWidth: 2, pointHoverBorderColor: k.sup,
-      fill: { target: { value: ini }, above: `color-mix(in srgb, ${k.bueno} 18%, transparent)`, below: `color-mix(in srgb, ${k.malo} 18%, transparent)` } },
+    { label: 'Punto de partida', data: [{ x: 0, y: ini }, { x: maxX, y: ini }], borderColor: k.eje, borderWidth: 1, ...linea },
+    { label: 'banda_alta', data: c.banda_alta, borderWidth: 0, stepped: 'after', fill: '+1', ...linea,
+      backgroundColor: `color-mix(in srgb, ${k.s2} 14%, transparent)` },
+    { label: 'banda_baja', data: c.banda_baja, borderWidth: 0, stepped: 'after', fill: false, ...linea },
+    { label: 'Lo esperado', data: c.esperado, borderColor: `color-mix(in srgb, ${k.s2} 80%, transparent)`, borderDash: [4, 4],
+      borderWidth: 1.5, stepped: 'after', ...linea },
+    { label: 'Objetivo', data: objetivo, borderColor: k.tenue, borderDash: [6, 5], borderWidth: 1.5, ...linea },
+    { label: 'Banca real', data: c.real, borderColor: k.s1, backgroundColor: k.s1, borderWidth: 3, stepped: 'after', ...linea,
+      pointHoverRadius: 5, pointHoverBorderWidth: 2, pointHoverBorderColor: k.sup,
+      fill: { target: { value: ini }, above: `color-mix(in srgb, ${k.bueno} 16%, transparent)`, below: `color-mix(in srgb, ${k.malo} 16%, transparent)` } },
   ];
+  const cuando = x => new Date(new Date(d.inicio).getTime() + x * 864e5).toLocaleString('es-MX', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
   const opciones = {
     responsive: true, maintainAspectRatio: false, animation: false,
-    interaction: { mode: 'index', intersect: false },
+    interaction: { mode: 'nearest', axis: 'x', intersect: false },
     plugins: { legend: { display: false }, tooltip: {
-      filter: i => !i.dataset.label.startsWith('banda') && i.dataset.label !== 'Punto de partida',
-      callbacks: { title: it => it.length ? `Día ${Math.floor(it[0].parsed.x)}` : '', label: i => ` ${i.dataset.label}: ${dinero.format(i.parsed.y)}` } } },
+      filter: i => ['Banca real', 'Lo esperado'].includes(i.dataset.label),
+      callbacks: {
+        title: it => it.length ? `Día ${Math.floor(it[0].parsed.x) + 1} · ${cuando(it[0].parsed.x)}` : '',
+        label: i => ` ${i.dataset.label}: ${dinero.format(i.parsed.y)} (${spct(i.parsed.y / ini - 1, 2)})`,
+        footer: it => it.length ? `Objetivo a esa hora: ${dinero.format(objetivoEn(it[0].parsed.x))}` : '',
+      } } },
     scales: {
-      x: { type: 'linear', min: 0, max: maxDia, grid: { display: false }, border: { color: k.reticula },
-           ticks: { stepSize: 7, color: k.tenue, callback: v => `Día ${v}` } },
-      y: { suggestedMin: ini - desvio * 1.15, suggestedMax: ini + desvio * 1.15, grid: { color: k.reticula }, border: { display: false },
-           ticks: { color: k.tenue, callback: v => dinero.format(v) } },
+      x: { type: 'linear', min: 0, max: maxX, grid: { display: false }, border: { color: k.reticula },
+           ticks: { stepSize: maxX > 10 ? 7 : 1, color: k.tenue,
+                    callback: v => new Date(new Date(d.inicio).getTime() + v * 864e5).toLocaleDateString('es-MX', { day: 'numeric', month: 'short' }) } },
+      y: { min: Math.floor((ini - desvio) / paso) * paso, max: Math.ceil((ini + desvio) / paso) * paso,
+           grid: { color: k.reticula }, border: { display: false }, ticks: { color: k.tenue, stepSize: paso, callback: v => dinero.format(v) } },
     },
   };
   if (grafica) { grafica.data.datasets = conjuntos; grafica.options = opciones; grafica.update(); return; }
   grafica = new Chart($('#curva'), { type: 'line', data: { datasets: conjuntos }, options: opciones });
 }
+document.querySelectorAll('#rango-curva button').forEach(b => b.addEventListener('click', () => {
+  rangoCurva = b.dataset.rango;
+  document.querySelectorAll('#rango-curva button').forEach(x => x.classList.toggle('activo', x === b));
+  datos && dibujarCurva(datos);
+}));
 
 function semanas(d) {
   const chips = { cumplido: '<span class="chip bueno">✓ Cumplido</span>', no_cumplido: '<span class="chip malo">✗ No cumplido</span>',
@@ -1060,15 +1107,126 @@ document.addEventListener('click', e => {
   if (ver) $('#detalle-estrategia').scrollIntoView({ behavior: 'smooth' });
 });
 
+// Análisis completo de cada apuesta: va en un archivo aparte que solo se pide al abrir una apuesta del diario
+let analisisDatos = null, analisisHora = 0;
+const abiertasDiario = new Set();
+async function cargarAnalisis() {
+  if (analisisDatos && Date.now() - analisisHora < 120000) return;
+  try {
+    const r = await fetch(ESTATICO ? `analisis.json?t=${Date.now()}` : '/api/analisis', { cache: 'no-store' });
+    analisisDatos = await r.json(); analisisHora = Date.now();
+  } catch (e) { analisisDatos = analisisDatos || {}; }
+}
+
 function diarioVista(d) {
   const titulo = dia => new Date(dia + 'T12:00:00').toLocaleDateString('es-MX', { weekday: 'long', day: 'numeric', month: 'long' });
+  const item = x => typeof x === 'string' || !x.apuesta ? `<li style="margin:4px 0">${esc(x.texto ?? x)}</li>`
+    : `<details class="apuesta-detalle" data-apuesta="${x.apuesta}" ${abiertasDiario.has(String(x.apuesta)) ? 'open' : ''}>
+        <summary>${esc(x.texto)} <span class="ver">· ver análisis</span></summary>
+        <div class="analisis-cuerpo">${abiertasDiario.has(String(x.apuesta)) && analisisDatos ? panelAnalisis(analisisDatos[x.apuesta]) : '<p class="chica">Cargando análisis…</p>'}</div>
+      </details>`;
   $('#diario').innerHTML = (d.diario || []).map(e => `<article class="tarjeta">
       <h2 style="text-transform:capitalize">📓 ${titulo(e.dia)}</h2>
       <div class="chica" style="margin-bottom:8px">Actualizado ${fecha(e.actualizado)}</div>
       ${e.secciones.map(s => `<h3 class="seccion" style="margin-top:14px">${esc(s.titulo)}</h3>
         ${(s.parrafos || []).map(p => `<p style="margin:6px 0">${esc(p)}</p>`).join('')}
-        ${s.lista ? `<ul style="margin:6px 0;padding-left:18px">${s.lista.map(x => `<li style="margin:4px 0">${esc(x)}</li>`).join('')}</ul>` : ''}`).join('')}
+        ${s.lista ? (s.lista.some(x => x && x.apuesta) ? s.lista.map(item).join('')
+          : `<ul style="margin:6px 0;padding-left:18px">${s.lista.map(item).join('')}</ul>`) : ''}`).join('')}
     </article>`).join('') || '<div class="vacio">El diario empieza a escribirse en la siguiente vuelta del bot.</div>';
+}
+// Al abrir una apuesta se carga (una vez) el análisis y se recuerda abierta aunque el tablero se actualice
+document.addEventListener('toggle', async e => {
+  const det = e.target;
+  if (!det.matches || !det.matches('details.apuesta-detalle')) return;
+  const id = det.dataset.apuesta;
+  if (!det.open) { abiertasDiario.delete(id); return; }
+  abiertasDiario.add(id);
+  await cargarAnalisis();
+  det.querySelector('.analisis-cuerpo').innerHTML = panelAnalisis(analisisDatos[id]);
+}, true);
+
+const dato = (etiqueta, valor) => `<div class="an-dato"><span>${etiqueta}</span><b>${valor}</b></div>`;
+function panelAnalisis(x) {
+  if (!x) return '<p class="chica">No encontré el análisis de esta apuesta (puede ser de otra estrategia).</p>';
+  const d = x.detalle, nombre = s => s === 'Draw' ? 'Empate' : s;
+  const partes = [`<div class="an-titulo">La apuesta</div><div class="an-grid">
+    ${dato('Apuesta', `${esc(x.seleccion)}`)}
+    ${dato('Casa y momio', `${esc(x.casa)} · ${x.momio.toFixed(2)} <span class="chica">(${americano(x.momio)})</span>`)}
+    ${dato('Monto', dinero.format(x.monto))}
+    ${dato('Si gana', `+${dinero.format(x.gana_si)} <span class="chica">cobra ${dinero.format(x.monto + x.gana_si)}</span>`)}
+    ${dato('Si pierde', `−${dinero.format(x.monto)}`)}
+    ${dato('Ganancia esperada', `${conSigno(x.esperado, sdinero(x.esperado))}`)}
+  </div>`];
+
+  // Probabilidades: lo que dice el precio justo contra lo que paga la casa
+  if (d?.probabilidades) {
+    const filas = Object.entries(d.probabilidades).map(([s, p]) => ({ s, p, elegida: nombre(s) === x.seleccion }));
+    partes.push(`<div class="an-titulo">Probabilidades (${esc(d.referencia)}, sin su comisión de ${pct(d.margen_ref, 1)})</div>
+      <div class="tabla"><table><thead><tr><th>Resultado</th><th class="num">Probabilidad real</th><th class="num">Momio justo</th></tr></thead><tbody>
+      ${filas.map(f => `<tr class="${f.elegida ? 'elegida' : ''}"><td>${esc(nombre(f.s))}</td><td class="num">${pct(f.p, 1)}</td><td class="num">${(1 / f.p).toFixed(2)}</td></tr>`).join('')}
+      </tbody></table></div>
+      <p>${esc(x.casa)} pagaba <b>${d.visto.toFixed(2)}</b> por ${esc(x.seleccion)}: es como si le diera <b>${pct(1 / d.visto, 1)}</b> de
+        probabilidad, pero la real es <b>${pct(x.prob, 1)}</b>. Por esa diferencia la apuesta tiene valor.</p>`);
+  } else {
+    partes.push(`<div class="an-titulo">Probabilidad</div><p>Probabilidad real (Pinnacle sin comisión): <b>${pct(x.prob, 1)}</b>; el momio
+      ${x.momio.toFixed(2)} paga como si fuera ${pct(1 / x.momio, 1)}. Valor: ${spct(x.valor)}.</p>`);
+  }
+
+  // ¿Por qué esa casa? Comparación de precios en ese momento
+  if (d?.precios?.length) {
+    const casas = d.precios.filter(([c]) => !c.includes('(referencia)'));
+    const mejor = casas.length && casas[0][0] === x.casa;
+    // Las 6 mejores casas y la referencia (para que la tabla no sea eterna)
+    const mostrar = d.precios.filter(([c], i) => i < 6 || c.includes('(referencia)') || c === x.casa);
+    partes.push(`<div class="an-titulo">¿Por qué ${esc(x.casa)}?</div>
+      <div class="tabla"><table><thead><tr><th>Casa</th><th class="num">Momio por ${esc(x.seleccion)}</th></tr></thead><tbody>
+      ${mostrar.map(([c, m]) => `<tr class="${c === x.casa ? 'elegida' : ''}"><td>${esc(c)}</td><td class="num">${m.toFixed(2)}</td></tr>`).join('')}
+      </tbody></table></div>
+      <p>${mejor ? `Era el mejor precio de ${casas.length} ${casas.length === 1 ? 'casa' : 'casas'} revisadas.` : 'Era el precio que mejor cumplía las reglas de la estrategia.'}
+        Su comisión en ese partido: ${pct(d.margen_casa, 1)} (Pinnacle: ${pct(d.margen_ref, 1)}).</p>`);
+  }
+
+  // Valor real: deslizamiento y cerebro
+  if (d) {
+    const ajustes = d.cerebro?.ajustes?.length ? d.cerebro.ajustes.map(([dim, nivel, e]) =>
+      `<li>${esc(dim)} — ${esc(nivel)}: <b class="${tono(e)}">${puntos(e)}</b></li>`).join('') : '';
+    partes.push(`<div class="an-titulo">Valor real</div>
+      <p>Momio publicado ${d.visto.toFixed(2)} → cuento <b>${d.momio.toFixed(2)}</b> (${pct(d.deslizamiento, 1)} menos por el movimiento del precio
+        al apostar) → valor <b>${spct(d.valor)}</b>.</p>
+      ${d.cerebro ? `<p>El cerebro sabe que de cada 1% de valor el cierre confirma ${d.cerebro.factor.toFixed(2)}%; con lo que ha aprendido de
+        apuestas parecidas estima la ventaja real en <b class="${tono(d.cerebro.ventaja)}">${spct(d.cerebro.ventaja, 2)}</b>.</p>
+        ${ajustes ? `<ul style="margin:4px 0;padding-left:18px">${ajustes}</ul>` : ''}` : '<p>Esta estrategia no usa el cerebro: apuesta con el valor a simple vista.</p>'}`);
+    const k = d.kelly;
+    partes.push(`<div class="an-titulo">Cuánto apostar</div>
+      <p>${k.fijo ? `Monto fijo de experimento: ${pct(k.fijo, 1)} de la banca.`
+        : `Kelly completo diría ${pct(k.completo, 2)} de la banca; por prudencia se usa ${k.fraccion === 0.25 ? '¼' : k.fraccion} de Kelly con tope de
+          ${pct(k.tope, 0)} → <b>${pct(k.elegida, 2)}</b>.`}
+        ${k.multiplicador && k.multiplicador !== 1 ? ` Modo objetivo: ×${k.multiplicador}.` : ''}
+        ${(d.notas || []).length ? ` Control de riesgo: ${esc(d.notas.join('; '))}.` : ''}
+        Resultado: <b>${dinero.format(d.monto)}</b> de una banca de ${dinero.format(d.banca)}.</p>
+      <p class="chica">Reglas que cumplió: valor de ${pct(d.reglas.umbral, 1)} o más${d.reglas.umbral_margen ? ' (más extra por margen alto)' : ''},
+        momio entre ${d.reglas.momio_min.toFixed(2)} y ${d.reglas.momio_max.toFixed(2)}, de ${d.reglas.horas_min} a ${d.reglas.horas_max} h antes
+        (faltaban ${d.horas} h).</p>`);
+  } else if (x.razon) {
+    partes.push(`<div class="an-titulo">Razón</div><p>${esc(x.razon)}</p>`);
+  }
+
+  // Después del partido: resultado, precio de cierre y suerte
+  const despues = [];
+  if (x.estado === 'abierta') despues.push('<p>El partido aún no termina.</p>');
+  else if (x.estado === 'anulada') despues.push(`<p>Apuesta anulada: ${esc(x.nota || 'se devolvió el dinero')}.</p>`);
+  else despues.push(`<p>${x.marcador ? `Marcador ${esc(x.marcador)}: ` : ''}<b class="${x.estado === 'ganada' ? 'bueno' : 'malo'}">${x.estado === 'ganada' ? 'ganada' : 'perdida'}
+    (${sdinero(x.ganancia)})</b>.</p>`);
+  if (x.cierre) despues.push(`<p>Contra el cierre (${x.cierre.fuente === 'draftkings' ? 'DraftKings' : 'Pinnacle'}): al empezar el partido la probabilidad
+    real era ${pct(x.cierre.prob, 1)}, así que mi momio valía <b class="${tono(x.cierre.clv)}">${spct(x.cierre.clv)}</b>
+    ${x.cierre.clv > 0 ? '— le gané al mercado: fue una buena apuesta, salga como salga.' : '— el mercado se movió en contra: el precio no era tan bueno.'}</p>`);
+  if (x.suerte != null) despues.push(`<p>Lo esperado era ${sdinero(x.esperado)} y el resultado fue ${sdinero(x.ganancia)}:
+    ${Math.abs(x.suerte) < 1 ? 'justo lo esperado' : x.suerte > 0 ? `<b class="bueno">buena suerte de ${dinero.format(x.suerte)}</b>` : `<b class="malo">mala suerte de ${dinero.format(-x.suerte)}</b>`}.
+    Con una sola apuesta la suerte pesa mucho más que el método.</p>`);
+  partes.push(`<div class="an-titulo">Después del partido</div>${despues.join('')}`);
+  partes.push(`<p class="chica" style="margin-top:12px">El bot no analiza jugadores ni estadísticas de los equipos: el precio de Pinnacle ya incluye
+    lesiones, alineaciones, noticias y el dinero de los profesionales. Lo que busca es una casa que se quedó atrás de ese precio.</p>`);
+  return partes.join('');
 }
 
 function bitacora(d) {

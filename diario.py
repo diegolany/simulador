@@ -75,16 +75,18 @@ def escribir(con, config: dict, dia: date | None = None) -> None:
                        f"{m['justo']:.2f} ({m['valor']:+.1%}). La Principal apuesta desde +1.5%.")
     secciones.append({"titulo": "Cómo trabajé", "parrafos": trabajo})
 
-    hechas = con.execute("""SELECT a.casa, e.local, e.visitante, a.seleccion, a.momio, a.razon
+    # Cada apuesta va resumida en una línea; el análisis completo se abre en el tablero al tocarla
+    hechas = con.execute("""SELECT a.id, a.casa, e.local, e.visitante, a.seleccion, a.momio, a.monto, a.valor
                             FROM apuestas a JOIN eventos e ON e.id = a.evento_id
                             WHERE a.estrategia = 'Principal' AND a.colocada >= ? AND a.colocada < ?
                             ORDER BY a.colocada""", (desde, hasta)).fetchall()
     secciones.append({"titulo": "Mis apuestas y por qué", "lista": [
-        f"{_origen(r['casa'])} · {r['local']} vs {r['visitante']} → {_nombre(r['seleccion'])} a {r['momio']:.2f}. {r['razon'] or ''}"
+        {"texto": f"{_origen(r['casa'])} · {r['local']} vs {r['visitante']} → {_nombre(r['seleccion'])} a {r['momio']:.2f} "
+                  f"· ${r['monto']:,.0f} · valor {r['valor']:+.1%}", "apuesta": r["id"]}
         for r in hechas] or ["Ninguna apuesta cumplió mis reglas: prefiero no apostar a apostar sin valor."]})
 
     resultados = []
-    for r in con.execute("""SELECT a.estrategia, e.local, e.visitante, e.marcador_local, e.marcador_visitante,
+    for r in con.execute("""SELECT a.id, a.estrategia, e.local, e.visitante, e.marcador_local, e.marcador_visitante,
                                    a.seleccion, a.estado, a.ganancia, a.clv
                             FROM apuestas a JOIN eventos e ON e.id = a.evento_id
                             WHERE a.estrategia = 'Principal' AND a.estado IN ('ganada', 'perdida')
@@ -98,9 +100,9 @@ def escribir(con, config: dict, dia: date | None = None) -> None:
                 lectura += " — gané, pero el mercado no me dio la razón en el precio: hubo suerte."
             else:
                 lectura += "."
-        resultados.append(f"{r['estrategia']} · {r['local']} {r['marcador_local']}-{r['marcador_visitante']} {r['visitante']}: "
-                          f"aposté a {_nombre(r['seleccion'])} y {'gané' if r['estado'] == 'ganada' else 'perdí'} "
-                          f"${abs(r['ganancia']):,.0f}.{lectura}")
+        resultados.append({"texto": f"{r['local']} {r['marcador_local']}-{r['marcador_visitante']} {r['visitante']}: "
+                                    f"aposté a {_nombre(r['seleccion'])} y {'gané' if r['estado'] == 'ganada' else 'perdí'} "
+                                    f"${abs(r['ganancia']):,.0f}.{lectura}", "apuesta": r["id"]})
     if resultados:
         secciones.append({"titulo": "Resultados", "lista": resultados})
 

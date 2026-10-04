@@ -132,7 +132,8 @@ def _ultima_ref(con, evento_id: str, referencia: str, antes_de: str) -> tuple[st
 
 
 def _curva(liquidadas: list[dict], inicial: float, inicio, objetivos: list[float], hasta) -> dict:
-    """Banca real, esperada (según el valor de cada apuesta) y su rango normal por suerte, día por día."""
+    """Banca real y esperada (según el valor de cada apuesta) con su rango normal por suerte, después de cada
+    apuesta cerrada; y el objetivo día por día."""
     dias_total = max(28, math.ceil((hasta - inicio).total_seconds() / 86400))
 
     def objetivo(dia: float) -> float:
@@ -143,28 +144,31 @@ def _curva(liquidadas: list[dict], inicial: float, inicio, objetivos: list[float
         ultimo_dia, ultimo = puntos[-1]
         return inicial * (1 + ultimo * dia / ultimo_dia)
 
-    orden = sorted(liquidadas, key=lambda a: a["liquidada"])
-    marcas = [i for i in range(dias_total + 1) if inicio + timedelta(days=i) <= hasta]
-    transcurrido = (hasta - inicio).total_seconds() / 86400
-    if not marcas or marcas[-1] < transcurrido:
-        marcas.append(transcurrido)
+    # Un punto por cada apuesta que se cierra (la banca solo cambia ahí) y uno final en este momento
+    transcurrido = max(0.0, (hasta - inicio).total_seconds() / 86400)
     real, esperado, banda_alta, banda_baja = [], [], [], []
-    for dia in marcas:
-        corte = iso(inicio + timedelta(days=dia))
-        hechas = [a for a in orden if a["liquidada"] <= corte]
-        decididas = [a for a in hechas if a["estado"] in ("ganada", "perdida")]
-        r = inicial + sum(a["ganancia"] or 0 for a in hechas)
-        e = inicial + sum(a["monto"] * a["valor"] for a in decididas)
-        sd = math.sqrt(sum((a["monto"] * a["momio"]) ** 2 * a["prob_justa"] * (1 - a["prob_justa"])
-                           for a in decididas))
-        x = round(dia, 3)
-        real.append({"x": x, "y": round(r, 2)})
-        esperado.append({"x": x, "y": round(e, 2)})
-        banda_alta.append({"x": x, "y": round(e + sd, 2)})
-        banda_baja.append({"x": x, "y": round(e - sd, 2)})
+    r = e = inicial
+    varianza = 0.0
+
+    def punto(x):
+        sd = math.sqrt(varianza)
+        real.append({"x": round(x, 4), "y": round(r, 2)})
+        esperado.append({"x": round(x, 4), "y": round(e, 2)})
+        banda_alta.append({"x": round(x, 4), "y": round(e + sd, 2)})
+        banda_baja.append({"x": round(x, 4), "y": round(e - sd, 2)})
+
+    punto(0)
+    for a in sorted(liquidadas, key=lambda a: a["liquidada"]):
+        r += a["ganancia"] or 0
+        if a["estado"] in ("ganada", "perdida"):
+            e += a["monto"] * a["valor"]
+            varianza += (a["monto"] * a["momio"]) ** 2 * a["prob_justa"] * (1 - a["prob_justa"])
+        punto(max(0.0, (a_fecha(a["liquidada"]) - inicio).total_seconds() / 86400))
+    punto(transcurrido)
     return {
         "objetivo": [{"x": d, "y": round(objetivo(d), 2)} for d in range(dias_total + 1)],
         "real": real, "esperado": esperado, "banda_alta": banda_alta, "banda_baja": banda_baja,
+        "hoy": round(transcurrido, 4), "dias": dias_total,
     }
 
 
@@ -277,6 +281,32 @@ def historiales(con) -> dict:
                             FROM apuestas a JOIN eventos e ON e.id = a.evento_id ORDER BY a.colocada DESC"""):
         por_estrategia.setdefault(a["estrategia"], []).append(_fila(dict(a)))
     return por_estrategia
+
+
+def analisis_apuestas(con, config: dict) -> dict:
+    """Análisis completo de cada apuesta de la Principal (lo que consideró al apostar, el resultado, el CLV y la suerte).
+    Va en un archivo aparte que la página solo pide al abrir una apuesta en el diario."""
+    salida = {}
+    for a in con.execute("""SELECT a.*, e.local, e.visitante, e.marcador_local, e.marcador_visitante, e.detalle
+                            FROM apuestas a JOIN eventos e ON e.id = a.evento_id
+                            WHERE a.estrategia = 'Principal' ORDER BY a.colocada DESC"""):
+        a = dict(a)
+        cerrada = a["estado"] in ("ganada", "perdida")
+        esperado = a["monto"] * a["valor"]
+        salida[str(a["id"])] = {
+            "partido": f"{a['local']} vs {a['visitante']}", "liga": a["liga"], "deporte": nombre_deporte(a["deporte"]),
+            "inicio": a["inicio"], "colocada": a["colocada"], "casa": a["casa"], "fuente": _origen(a),
+            "seleccion": "Empate" if a["seleccion"] == "Draw" else a["seleccion"], "local": a["local"],
+            "visitante": a["visitante"], "momio": a["momio"], "momio_visto": a["momio_visto"], "monto": a["monto"],
+            "prob": a["prob_justa"], "valor": a["valor"], "ventaja": a["ventaja_estimada"],
+            "gana_si": a["monto"] * (a["momio"] - 1), "esperado": esperado, "estado": a["estado"], "ganancia": a["ganancia"],
+            "marcador": f"{a['marcador_local']}-{a['marcador_visitante']}" if a["marcador_local"] is not None else None,
+            "nota": a["nota"], "razon": a["razon"],
+            "cierre": {"prob": a["prob_cierre"], "clv": a["clv"], "fuente": a["clv_fuente"]} if a["clv"] is not None else None,
+            "suerte": (a["ganancia"] - esperado) if cerrada else None,
+            "detalle": json.loads(a["analisis"]) if a["analisis"] else None,
+        }
+    return salida
 
 
 def estado(con, config: dict) -> dict:

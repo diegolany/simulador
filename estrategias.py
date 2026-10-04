@@ -236,15 +236,36 @@ def _monto(ctx: _Contexto, est: dict, fraccion: float, casa: str, deporte: str) 
 
 def _registrar(con, est: dict, ev, sel: str, casa: str, momio: float, visto: float, momio_ref: float, prob: float,
                monto: int, colocada: str, razon: str, margen: float, ventaja: float | None, minutos: float,
-               multiplicador: float = 1.0) -> None:
+               multiplicador: float = 1.0, analisis: str | None = None) -> None:
     con.execute(
         """INSERT INTO apuestas (estrategia, evento_id, deporte, liga, mercado, seleccion, casa, momio, momio_ref,
                                  prob_justa, valor, monto, colocada, inicio, razon, momio_visto, margen_ref,
-                                 ventaja_estimada, minutos_precio, multiplicador)
-           VALUES (?, ?, ?, ?, 'h2h', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                                 ventaja_estimada, minutos_precio, multiplicador, analisis)
+           VALUES (?, ?, ?, ?, 'h2h', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         (est["nombre"], ev["id"], ev["deporte"], ev["liga"], sel, casa, momio, momio_ref, prob,
          valor_esperado(prob, momio), monto, colocada, ev["inicio"], razon, visto, round(margen, 4),
-         round(ventaja, 4) if ventaja is not None else None, minutos, multiplicador))
+         round(ventaja, 4) if ventaja is not None else None, minutos, multiplicador, analisis))
+
+
+def _analisis(p: dict, probs: dict, referencia: str, margen_ref: float, sel: str, visto: float, momio: float,
+              desliz: float, ventaja: float | None, ajustes, factor: float, fraccion: float, monto: int, actual: float,
+              notas: list, multiplicador: float, horas: float, precios_casas: list, margen_elegida: float) -> str:
+    """Todo lo que el bot consideró al apostar, guardado tal cual para revisarlo después en el diario."""
+    valor = valor_esperado(probs[sel], momio)
+    estimada = ventaja if ventaja is not None else valor
+    return json.dumps({
+        "referencia": referencia, "probabilidades": {s: round(v, 4) for s, v in probs.items()},
+        "margen_ref": round(margen_ref, 4), "margen_casa": round(margen_elegida, 4),
+        "precios": sorted(([c, round(m, 3)] for c, m in precios_casas), key=lambda x: -x[1])[:12],
+        "visto": round(visto, 3), "momio": momio, "deslizamiento": round(desliz, 4), "valor": round(valor, 4),
+        "cerebro": None if ventaja is None else {"factor": round(factor, 3), "ventaja": round(ventaja, 4),
+                                                "ajustes": [[d, n, round(e, 4)] for d, n, e in ajustes]},
+        "kelly": {"completo": round(max(0.0, estimada / (momio - 1)), 4), "fraccion": p["kelly"], "tope": p["tope"],
+                  "fijo": p.get("fijo"), "elegida": round(fraccion, 4), "multiplicador": multiplicador},
+        "notas": notas, "monto": monto, "banca": round(actual, 2), "horas": round(horas, 1),
+        "reglas": {"umbral": p["umbral"], "umbral_margen": p.get("umbral_margen", 0), "momio_min": p["momio_min"],
+                   "momio_max": p["momio_max"], "horas_min": p["horas_min"], "horas_max": p["horas_max"]},
+    }, ensure_ascii=False)
 
 
 def _anotar_senales(con, config: dict, ev, precios: list, justas: dict, margen: float, capturado: str) -> None:
@@ -371,14 +392,20 @@ def colocar_apuestas(con, config: dict, capturado: str) -> tuple[dict, int]:
             monto, actual, notas, multiplicador = _monto(ctx, est, fraccion, casa, ev["deporte"])
             if not monto:
                 continue
+            analisis = None
             if est["tipo"] == "valor":
                 razon = _razon_valor(casa, sel, visto, momio, prob, horas, monto, actual, ventaja, ajustes, notas,
                                      referencia=nombre_ref)
+                analisis = _analisis(p, probs, nombre_ref, margen, sel, visto, momio, desliz, ventaja, ajustes,
+                                     ctx.mente.factor, fraccion, monto, actual, notas, multiplicador, horas,
+                                     [(o["casa"], o["visto"]) for o in ofertas if o["sel"] == sel]
+                                     + [(f"{referencia} (referencia)", ref["momios"][sel])],
+                                     margen_casa(list(casas[casa]["momios"].values())))
             else:
                 razon = (f"Control: apuesto al favorito ({prob:.0%}) al momio promedio de {len(precios)} casas "
                          f"({momio:.2f}), sin buscar valor, como lo haría un apostador casual.")
             _registrar(con, est, ev, sel, casa, momio, visto, ref["momios"][sel], prob, monto, capturado, razon,
-                       margen, ventaja, round(minutos, 1), multiplicador)
+                       margen, ventaja, round(minutos, 1), multiplicador, analisis)
             ya_apostadas.add((est["nombre"], evento_id))
             colocadas[est["nombre"]] = colocadas.get(est["nombre"], 0) + 1
     con.commit()
@@ -565,8 +592,13 @@ def _apostar_con_precios(con, config: dict, obtener_precio, minutos: float, nota
                                  f" {nota}; precio justo de hace {edad:.1f} h."
                                  + (f" Experimento: {est['descripcion']}." if est["tipo"] == "gratis" else ""),
                                  fijo=bool(p.get("fijo")), referencia=nombre_ref)
+            analisis = _analisis(p, probs, nombre_ref, margen, sel, precios[sel], momio, desliz,
+                                 estimada if usa_cerebro else None, ajustes, ctx.mente.factor, fraccion, monto, actual,
+                                 notas, multiplicador, horas,
+                                 [(casa, precios[sel]), (f"{referencia} (referencia)", ref[sel])],
+                                 margen_casa(list(precios.values())))
             _registrar(con, est, ev, sel, casa, momio, round(precios[sel], 3), ref[sel], probs[sel], monto, colocada,
-                       razon, margen, estimada if usa_cerebro else None, 0.0, multiplicador)
+                       razon, margen, estimada if usa_cerebro else None, 0.0, multiplicador, analisis)
             ya_apostadas.add((est["nombre"], ev["id"]))
             colocadas[est["nombre"]] = colocadas.get(est["nombre"], 0) + 1
     con.commit()
