@@ -1,19 +1,7 @@
 {
  "casa": "caliente",
- "capturado": "2026-10-04T06:23:34+00:00",
+ "capturado": "2026-10-04T17:06:55+00:00",
  "partidos": [
-  {
-   "deporte": "americanfootball_nfl",
-   "inicio": "2026-10-04T13:30:00+00:00",
-   "equipos": [
-    "Indianapolis Colts",
-    "Washington Commanders"
-   ],
-   "momios": {
-    "Indianapolis Colts": 1.45,
-    "Washington Commanders": 2.85
-   }
-  },
   {
    "deporte": "americanfootball_nfl",
    "inicio": "2026-10-04T20:25:00+00:00",
@@ -23,7 +11,7 @@
    ],
    "momios": {
     "Kansas City Chiefs": 1.45,
-    "Las Vegas Raiders": 2.9
+    "Las Vegas Raiders": 2.875
    }
   },
   {
@@ -40,86 +28,14 @@
   },
   {
    "deporte": "americanfootball_nfl",
-   "inicio": "2026-10-04T17:00:00+00:00",
-   "equipos": [
-    "Los Angeles Rams",
-    "Philadelphia Eagles"
-   ],
-   "momios": {
-    "Los Angeles Rams": 1.533,
-    "Philadelphia Eagles": 2.65
-   }
-  },
-  {
-   "deporte": "americanfootball_nfl",
-   "inicio": "2026-10-04T17:00:00+00:00",
-   "equipos": [
-    "Jacksonville Jaguars",
-    "Cincinnati Bengals"
-   ],
-   "momios": {
-    "Jacksonville Jaguars": 2.25,
-    "Cincinnati Bengals": 1.7
-   }
-  },
-  {
-   "deporte": "americanfootball_nfl",
-   "inicio": "2026-10-04T17:00:00+00:00",
-   "equipos": [
-    "Green Bay Packers",
-    "Tampa Bay Buccaneers"
-   ],
-   "momios": {
-    "Green Bay Packers": 1.615,
-    "Tampa Bay Buccaneers": 2.4
-   }
-  },
-  {
-   "deporte": "americanfootball_nfl",
    "inicio": "2026-10-04T20:25:00+00:00",
    "equipos": [
     "Denver Broncos",
     "San Francisco 49ers"
    ],
    "momios": {
-    "Denver Broncos": 2.25,
-    "San Francisco 49ers": 1.7
-   }
-  },
-  {
-   "deporte": "americanfootball_nfl",
-   "inicio": "2026-10-04T17:00:00+00:00",
-   "equipos": [
-    "New England Patriots",
-    "Buffalo Bills"
-   ],
-   "momios": {
-    "New England Patriots": 3.65,
-    "Buffalo Bills": 1.3
-   }
-  },
-  {
-   "deporte": "americanfootball_nfl",
-   "inicio": "2026-10-04T17:00:00+00:00",
-   "equipos": [
-    "Arizona Cardinals",
-    "New York Giants"
-   ],
-   "momios": {
-    "Arizona Cardinals": 1.727,
-    "New York Giants": 2.2
-   }
-  },
-  {
-   "deporte": "americanfootball_nfl",
-   "inicio": "2026-10-04T17:00:00+00:00",
-   "equipos": [
-    "Dallas Cowboys",
-    "Houston Texans"
-   ],
-   "momios": {
-    "Dallas Cowboys": 2.375,
-    "Houston Texans": 1.615
+    "Denver Broncos": 2.375,
+    "San Francisco 49ers": 1.615
    }
   },
   {
@@ -130,7 +46,7 @@
     "Minnesota Vikings"
    ],
    "momios": {
-    "Miami Dolphins": 5.75,
+    "Miami Dolphins": 5.5,
     "Minnesota Vikings": 1.166
    }
   },
@@ -148,30 +64,6 @@
   },
   {
    "deporte": "americanfootball_nfl",
-   "inicio": "2026-10-04T17:00:00+00:00",
-   "equipos": [
-    "New York Jets",
-    "Chicago Bears"
-   ],
-   "momios": {
-    "New York Jets": 2.65,
-    "Chicago Bears": 1.533
-   }
-  },
-  {
-   "deporte": "americanfootball_nfl",
-   "inicio": "2026-10-04T17:00:00+00:00",
-   "equipos": [
-    "Tennessee Titans",
-    "Baltimore Ravens"
-   ],
-   "momios": {
-    "Tennessee Titans": 6.25,
-    "Baltimore Ravens": 1.142
-   }
-  },
-  {
-   "deporte": "americanfootball_nfl",
    "inicio": "2026-10-06T00:15:00+00:00",
    "equipos": [
     "Atlanta Falcons",
@@ -184,67 +76,15 @@
   },
   {
    "deporte": "soccer_spain_segunda_division",
-   "inicio": "2026-10-04T12:00:00+00:00",
-   "equipos": [
-    "Real Sociedad B",
-    "Granada"
-   ],
-   "momios": {
-    "Real Sociedad B": 2.52,
-    "Granada": 2.74,
-    "Empate": 3.25
-   }
-  },
-  {
-   "deporte": "soccer_spain_segunda_division",
-   "inicio": "2026-10-04T14:15:00+00:00",
-   "equipos": [
-    "Sporting Gijon",
-    "Celta Vigo B"
-   ],
-   "momios": {
-    "Sporting Gijon": 1.62,
-    "Celta Vigo B": 5.3,
-    "Empate": 3.75
-   }
-  },
-  {
-   "deporte": "soccer_spain_segunda_division",
-   "inicio": "2026-10-04T16:30:00+00:00",
-   "equipos": [
-    "CD Castellon",
-    "AD Ceuta"
-   ],
-   "momios": {
-    "CD Castellon": 1.22,
-    "AD Ceuta": 12,
-    "Empate": 6
-   }
-  },
-  {
-   "deporte": "soccer_spain_segunda_division",
-   "inicio": "2026-10-04T16:30:00+00:00",
-   "equipos": [
-    "Las Palmas",
-    "Real Valladolid"
-   ],
-   "momios": {
-    "Las Palmas": 2.2,
-    "Real Valladolid": 3.25,
-    "Empate": 3.25
-   }
-  },
-  {
-   "deporte": "soccer_spain_segunda_division",
    "inicio": "2026-10-04T19:00:00+00:00",
    "equipos": [
     "Girona",
     "RCD Mallorca"
    ],
    "momios": {
-    "Girona": 2.4,
-    "RCD Mallorca": 2.82,
-    "Empate": 3.35
+    "Girona": 2.44,
+    "RCD Mallorca": 2.88,
+    "Empate": 3.2
    }
   },
   {
@@ -268,9 +108,9 @@
     "CA Tigre"
    ],
    "momios": {
-    "Argentinos Juniors": 1.81,
-    "CA Tigre": 4.9,
-    "Empate": 3.25
+    "Argentinos Juniors": 1.82,
+    "CA Tigre": 5,
+    "Empate": 3.2
    }
   },
   {
@@ -281,9 +121,9 @@
     "Rosario Central"
    ],
    "momios": {
-    "Banfield": 4.3,
+    "Banfield": 4.2,
     "Rosario Central": 1.91,
-    "Empate": 3.3
+    "Empate": 3.35
    }
   },
   {
@@ -294,8 +134,8 @@
     "CA Belgrano"
    ],
    "momios": {
-    "Talleres de Cordoba": 2.6,
-    "CA Belgrano": 2.9,
+    "Talleres de Cordoba": 2.68,
+    "CA Belgrano": 2.78,
     "Empate": 3.05
    }
   },
@@ -308,8 +148,8 @@
    ],
    "momios": {
     "Huracan": 1.73,
-    "Aldosivi": 5.7,
-    "Empate": 3.3
+    "Aldosivi": 5.5,
+    "Empate": 3.35
    }
   },
   {
@@ -320,9 +160,9 @@
     "Platense"
    ],
    "momios": {
-    "Velez Sarsfield": 1.95,
-    "Platense": 4.6,
-    "Empate": 3.05
+    "Velez Sarsfield": 1.94,
+    "Platense": 4.75,
+    "Empate": 3
    }
   },
   {
@@ -347,7 +187,7 @@
    ],
    "momios": {
     "Deportivo Riestra": 1.91,
-    "Central Cordoba": 4.5,
+    "Central Cordoba": 4.45,
     "Empate": 3.2
    }
   },
@@ -372,8 +212,8 @@
     "Seattle Kraken"
    ],
    "momios": {
-    "Calgary Flames": 2.22,
-    "Seattle Kraken": 1.68
+    "Calgary Flames": 2.28,
+    "Seattle Kraken": 1.65
    }
   },
   {
@@ -384,8 +224,8 @@
     "Detroit Red Wings"
    ],
    "momios": {
-    "Winnipeg Jets": 1.91,
-    "Detroit Red Wings": 1.92
+    "Winnipeg Jets": 1.83,
+    "Detroit Red Wings": 2
    }
   },
   {
@@ -396,8 +236,8 @@
     "Vancouver Canucks"
    ],
    "momios": {
-    "Vegas Golden Knights": 1.41,
-    "Vancouver Canucks": 2.96
+    "Vegas Golden Knights": 1.35,
+    "Vancouver Canucks": 3.3
    }
   },
   {
@@ -408,8 +248,8 @@
     "New York Rangers"
    ],
    "momios": {
-    "Utah Mammoth": 2.1,
-    "New York Rangers": 1.76
+    "Utah Mammoth": 2.04,
+    "New York Rangers": 1.8
    }
   },
   {
