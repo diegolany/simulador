@@ -390,10 +390,10 @@ def _razon_valor(casa: str, sel: str, visto: float, momio: float, prob: float, h
 
 
 def _califica(p: dict, momio: float, visto: float, valor: float, umbral: float, apertura: float | None,
-              cambio_pinnacle: float | None, config: dict) -> bool:
+              cambio_pinnacle: float | None, tope: float) -> bool:
     """¿La selección cumple las reglas de la estrategia? Los experimentos DraftKings añaden una condición:
     'movimiento' = su momio bajó desde la apertura (entró dinero); 'pinnacle_mueve' = Pinnacle subió su probabilidad."""
-    if not p["momio_min"] <= momio <= p["momio_max"] or not umbral <= valor <= config["valor_sospechoso"]:
+    if not p["momio_min"] <= momio <= p["momio_max"] or not umbral <= valor <= tope:
         return False
     modo = p.get("modo", "valor")
     if modo == "movimiento":
@@ -475,12 +475,17 @@ def apostar_gratis(con, config: dict) -> dict:
                     consenso = _consenso(casas_cap, selecciones, justas, a_fecha(ev["cap"]), max_antiguedad)
                 probs, nombre_ref = consenso, "El consenso (Pinnacle + intercambios)"
             usa_cerebro = est["tipo"] == "valor" and p["cerebro"]
+            # Las estrategias de valor no apuestan contra una foto vieja de Pinnacle: si el mercado se movió después,
+            # el "valor" es falso. Y DraftKings casi nunca paga más que el precio justo: más de 4% delata una foto vieja
+            if est["tipo"] == "valor" and edad * 60 > config["max_minutos_referencia_valor"]:
+                continue
+            tope = config["valor_sospechoso_dk"] if est["tipo"] == "valor" else config["valor_sospechoso"]
             umbral = p["umbral"] + p["umbral_margen"] * max(0.0, margen - MARGEN_EFICIENTE)
             candidatas = []
             for s in selecciones:
                 v = valor_esperado(probs[s], ejecutados[s])
                 if not _califica(p, ejecutados[s], precios[s], v, umbral, apertura.get(s),
-                                 justas[s] - previas[s] if s in previas else None, config):
+                                 justas[s] - previas[s] if s in previas else None, tope):
                     continue
                 estimada, aj = v, []
                 if usa_cerebro:

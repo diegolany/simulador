@@ -13,7 +13,9 @@ import math
 import random
 from statistics import NormalDist
 
-from base_datos import a_fecha, ahora, anotar, guardar_estado, leer_estado
+from datetime import timedelta
+
+from base_datos import a_fecha, ahora, anotar, guardar_estado, iso, leer_estado
 
 NORMAL = NormalDist()
 SD_PREVIA, PESO_SD = 0.04, 5  # dispersión típica del CLV por apuesta; pesa como 5 apuestas (evita confianza falsa)
@@ -370,6 +372,12 @@ def modo_objetivo(con, config: dict) -> dict:
         resultado = {"multiplicador": 1.0, "opciones": [], "razon": "Modo objetivo apagado: montos normales."}
         guardar_estado(con, "modo_objetivo", resultado)
         return resultado
+    # Solo se recalcula cada hora o cuando la Principal tiene apuestas nuevas o liquidadas (evita cambios por ruido)
+    huella = list(con.execute("SELECT COUNT(*), COALESCE(SUM(estado != 'abierta'), 0) FROM apuestas "
+                              "WHERE estrategia = 'Principal'").fetchone())
+    if (anterior.get("huella") == huella and anterior.get("calculado")
+            and ahora() - a_fecha(anterior["calculado"]) < timedelta(minutes=60)):
+        return anterior
     d = _datos(con, config)
     opciones = []
     for m in MULTIPLICADORES:
@@ -384,8 +392,10 @@ def modo_objetivo(con, config: dict) -> dict:
                          "prob_caida_20": p["prob_caida_20"], "mediana": p["mediana"]})
     p_ventaja = d["post"]["p_ventaja"] if d["post"] else 0.5
     for x in opciones:
-        x["permitida"] = x["prob_caida_20"] <= o["max_caida_20"] and (x["multiplicador"] <= 1.0
-                                                                     or p_ventaja >= o["prob_ventaja_para_subir"])
+        # Margen de 2 puntos: para subir hay que estar claramente debajo del límite; para seguir, no pasarlo claramente
+        limite = o["max_caida_20"] + (0.02 if x["multiplicador"] <= actual else -0.02)
+        x["permitida"] = x["prob_caida_20"] <= limite and (x["multiplicador"] <= 1.0
+                                                           or p_ventaja >= o["prob_ventaja_para_subir"])
     permitidas = [x for x in opciones if x["permitida"]]
     if not permitidas:
         elegida = opciones[0]  # todas pasan el límite: lo más prudente
@@ -418,7 +428,7 @@ def modo_objetivo(con, config: dict) -> dict:
         razon += (f" No subo más porque la probabilidad de que la ventaja sea real ({p_ventaja:.0%}) todavía no llega a "
                   f"{o['prob_ventaja_para_subir']:.0%}: sin ventaja, apostar más solo es arriesgar más.")
     resultado = {"multiplicador": m, "prob_meta": elegida["prob_meta"], "opciones": opciones, "razon": razon,
-                 "p_ventaja": p_ventaja, "max_caida_20": o["max_caida_20"]}
+                 "p_ventaja": p_ventaja, "max_caida_20": o["max_caida_20"], "huella": huella, "calculado": iso(ahora())}
     if m != actual:
         anotar(con, "riesgo", f"Modo objetivo: montos de ×{actual:g} a ×{m:g}. {razon}")
     guardar_estado(con, "modo_objetivo", resultado)

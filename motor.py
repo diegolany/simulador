@@ -137,8 +137,8 @@ def _ultima_descarga(con, deporte: str):
 
 
 def puntajes_descarga(con, config: dict, cal: dict) -> dict:
-    """Qué tanto conviene gastar un crédito en cada liga ahora mismo:
-    urgencia (partidos que empiezan pronto) x antigüedad de sus momios x valor histórico de la liga."""
+    """Partidos con valor que se esperan por cada crédito gastado en cada liga ahora mismo:
+    urgencia (partidos que empiezan pronto) x antigüedad de sus momios x valor por partido de la liga."""
     momento = ahora()
     valores = aprendizaje.valor_ligas(con, config, list(cal))
     puntajes = {}
@@ -227,6 +227,16 @@ def ciclo(con, config: dict, forzar_barrido: bool = False) -> None:
         con.execute("""UPDATE apuestas SET cierre_revisado = 0
                        WHERE clv IS NULL AND cierre_revisado = 1 AND estado != 'anulada'""")
         guardar_estado(con, "clv_espn_retroactivo", True)
+    if not leer_estado(con, "partidos_retroactivo"):  # una vez: cuántos partidos traía cada descarga anterior
+        con.execute("""UPDATE consumo_api SET partidos = NULLIF((
+                           SELECT COUNT(DISTINCT m.evento_id) FROM momios m JOIN eventos e ON e.id = m.evento_id
+                           WHERE e.deporte = consumo_api.deporte AND m.casa = ?
+                             AND abs(julianday(m.capturado) - julianday(consumo_api.fecha)) < 0.002), 0)
+                       WHERE endpoint = 'odds' AND partidos IS NULL""", (config["casa_referencia"],))
+        # Las señales de NHL y MMA antes de corregir el error de 3 vías (2 de octubre) eran falsas
+        con.execute("""UPDATE consumo_api SET senales = 0 WHERE endpoint = 'odds' AND fecha < '2026-10-02T12:00:00'
+                       AND deporte IN ('icehockey_nhl', 'mma_mixed_martial_arts')""")
+        guardar_estado(con, "partidos_retroactivo", True)
 
     vivos, terminados = _seguro("Marcadores ESPN", marcadores.actualizar, con) or (0, 0)  # gratis
     if vivos or terminados:

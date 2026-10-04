@@ -48,7 +48,8 @@ CREATE TABLE IF NOT EXISTS consumo_api (
     deporte TEXT,
     costo INTEGER NOT NULL,
     restantes INTEGER,
-    senales INTEGER                 -- partidos con valor encontrados en esa descarga
+    senales INTEGER,                -- partidos con valor encontrados en esa descarga
+    partidos INTEGER                -- partidos que traía esa descarga (para medir valor por partido)
 );
 
 CREATE TABLE IF NOT EXISTS estrategias (
@@ -151,7 +152,7 @@ def conectar() -> sqlite3.Connection:
     nuevas = (("eventos", "detalle", "TEXT"), ("apuestas", "clv_fuente", "TEXT"), ("apuestas", "razon", "TEXT"),
               ("apuestas", "momio_visto", "REAL"), ("apuestas", "margen_ref", "REAL"),
               ("apuestas", "ventaja_estimada", "REAL"), ("apuestas", "minutos_precio", "REAL"),
-              ("apuestas", "multiplicador", "REAL"))
+              ("apuestas", "multiplicador", "REAL"), ("consumo_api", "partidos", "INTEGER"))
     for tabla, columna, tipo in nuevas:  # bases creadas antes de esas columnas
         if columna not in {c[1] for c in con.execute(f"PRAGMA table_info({tabla})")}:
             con.execute(f"ALTER TABLE {tabla} ADD COLUMN {columna} {tipo}")

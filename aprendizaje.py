@@ -70,29 +70,31 @@ def prioridad_ligas(con, config: dict, deportes: list[str]) -> list[str]:
     return sorted(deportes, key=lambda d: valores[d], reverse=True)
 
 
+PARTIDOS_PREVIOS = 30  # con pocos partidos vistos, la tasa de una liga se parece a la de todas
+
+
 def valor_ligas(con, config: dict, deportes: list[str]) -> dict[str, float]:
-    """Qué tanto vale descargar cada liga: valor encontrado por crédito (ajustado por su CLV)
-    más un bono de exploración que crece si se revisa poco. Las nunca revisadas valen el máximo."""
-    descargas = {f[0]: (f[1], f[2] or 0) for f in con.execute(
-        "SELECT deporte, COUNT(*), SUM(senales) FROM consumo_api WHERE endpoint = 'odds' GROUP BY deporte")}
-    total = sum(n for n, _ in descargas.values())
+    """Partidos con valor que se esperan POR PARTIDO de cada liga (ajustado por su CLV y por la prueba histórica),
+    más un bono de exploración para las poco revisadas. Se mide por partido y no por descarga: una liga con 50
+    partidos trae más señales por descarga solo por tener más partidos, y eso ya lo cuenta el calendario."""
+    filas = {f[0]: (f[1], f[2] or 0, f[3] or 0) for f in con.execute(
+        """SELECT deporte, COUNT(*), SUM(senales), SUM(partidos) FROM consumo_api
+           WHERE endpoint = 'odds' AND partidos > 0 GROUP BY deporte""")}
+    total = sum(n for n, _, _ in filas.values())
+    general = (sum(s for _, s, _ in filas.values()) + 1) / (sum(p for _, _, p in filas.values()) + 25)
     clv = _clv_por(con, "deporte")
     previa = (evidencia(con) or {}).get("por_clave", {})
-    tasas = {d: (s + 1) / (n + 2) for d, (n, s) in descargas.items()}
-    maxima = max(tasas.values(), default=1)
-    puntajes = {}
+    valores = {}
     for d in deportes:
-        n, _ = descargas.get(d, (0, 0))
-        if n == 0:
-            puntajes[d] = 3.0 * _factor_historico(previa.get(d))
-            continue
+        n, senales, partidos = filas.get(d, (0, 0, 0))
+        tasa = (senales + general * PARTIDOS_PREVIOS) / (partidos + PARTIDOS_PREVIOS)
         m, media, _ = estadistica(clv.get(d, []))
         factor = min(2.0, max(0.2, 1 + 20 * media * m / (m + 20)))
         # Lo aprendido de temporadas pasadas pesa mientras haya pocos datos en vivo de esa liga
         factor *= 1 + (_factor_historico(previa.get(d)) - 1) * 20 / (m + 20)
-        bono = config["aprendizaje"]["exploracion"] * math.sqrt(math.log(total + 1) / (n + 1))
-        puntajes[d] = tasas[d] / maxima * factor + bono
-    return puntajes
+        bono = config["aprendizaje"]["exploracion"] * general * math.sqrt(math.log(total + 1) / (n + 1))
+        valores[d] = tasa * factor + bono
+    return valores
 
 
 def evidencia(con) -> dict | None:
@@ -332,12 +334,14 @@ def revision(con, config: dict) -> None:
                                      f"adopta sus reglas: {_describir(nuevos)}. Las reglas anteriores siguen compitiendo.")
             principal = _leer(con, "Principal")
 
-    # 3. Retiro de retadoras que pierden contra el mercado o claramente contra la Principal
-    for r in [_leer(con, f[0]) for f in con.execute("SELECT nombre FROM estrategias WHERE rol = 'retadora'")]:
+    # 3. Retiro de retadoras (y experimentos) que pierden contra el mercado o claramente contra la Principal
+    for r in [_leer(con, f[0]) for f in con.execute(
+            "SELECT nombre FROM estrategias WHERE rol IN ('retadora', 'experimento')")]:
         post = posts.get(r["nombre"])
         if not post or post["n"] < ap["min_apuestas_clv_retiro"]:
             continue
-        peor_que_principal = post_p is not None and riesgo.prob_mejor(post_p, post) >= ap["prob_promocion"]
+        peor_que_principal = (r["rol"] == "retadora" and post_p is not None
+                              and riesgo.prob_mejor(post_p, post) >= ap["prob_promocion"])
         if post["p_ventaja"] <= ap["prob_retiro"] or peor_que_principal:
             con.execute("UPDATE estrategias SET rol = 'retirada', retirada = ? WHERE nombre = ?",
                         (iso(ahora()), r["nombre"]))

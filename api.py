@@ -117,6 +117,7 @@ def descargar_momios(con, config: dict, deporte: str, liga: str, motivo: str) ->
                          opcion["price"], capturado, iso(a_fecha(actualizado)) if actualizado else None),
                     )
     id_consumo = registrar_consumo(con, "odds", motivo, deporte, costo, restantes)
+    con.execute("UPDATE consumo_api SET partidos = ? WHERE id = ?", (len(eventos), id_consumo))
     con.commit()
     return capturado, id_consumo, costo
 
