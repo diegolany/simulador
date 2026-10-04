@@ -365,11 +365,22 @@ def revisar_empates(con) -> int:
     return corregidos
 
 
+def _reprogramado(ev, inicio, cache) -> tuple[dict | None, bool]:
+    """El mismo partido, ya terminado, en las 48 h siguientes a su hora original (ESPN lo muestra en su nueva fecha)."""
+    if ev["deporte"] in VENTANA_AMPLIA or ev["deporte"] == "basketball_euroleague":
+        return None, False
+    lista = []
+    for dias in (0, 1, 2):
+        lista += [c for c in candidatos(ev["deporte"], inicio + timedelta(days=dias), cache)
+                  if c["terminado"] and inicio < c["inicio"] <= inicio + timedelta(hours=48)]
+    return emparejar(ev["local"], ev["visitante"], inicio, lista, 48)
+
+
 def actualizar(con) -> tuple[int, int]:
     """Actualiza el marcador de los partidos apostados que ya empezaron.
     Devuelve (partidos en juego, partidos terminados)."""
     pendientes = con.execute(
-        """SELECT DISTINCT e.id, e.deporte, e.local, e.visitante, e.inicio FROM eventos e
+        """SELECT DISTINCT e.id, e.deporte, e.local, e.visitante, e.inicio, e.pospuesto FROM eventos e
            JOIN apuestas a ON a.evento_id = e.id
            WHERE a.estado = 'abierta' AND e.terminado = 0 AND e.inicio <= ?""", (iso(ahora()),)).fetchall()
     cache, vivos, terminados = {}, 0, 0
@@ -380,13 +391,21 @@ def actualizar(con) -> tuple[int, int]:
         partido, invertido = emparejar(ev["local"], ev["visitante"], inicio,
                                        candidatos(ev["deporte"], inicio, cache),
                                        30 if ev["deporte"] in VENTANA_AMPLIA else 3)
+        if not partido and ev["pospuesto"]:  # ESPN ya lo quitó de su fecha original: ¿se jugó en otra?
+            partido, invertido = _reprogramado(ev, inicio, cache)
+            if partido:
+                partido = dict(partido, detalle=f"{partido['detalle']} (reprogramado)")
         if not partido or partido["fase"] == "pre":
             continue
         if partido["fase"] == "post" and not partido["terminado"]:  # pospuesto, suspendido o cancelado
-            # Las 48 h de las casas cuentan desde la hora original del partido
-            con.execute("UPDATE eventos SET detalle = ?, pospuesto = COALESCE(pospuesto, MIN(?, inicio)) WHERE id = ?",
-                        (partido["detalle"], iso(ahora()), ev["id"]))
-            continue
+            # ¿Se reprogramó y ya se jugó dentro de las 48 h? Entonces las apuestas siguen y se liquidan con ese marcador
+            jugado, inv = _reprogramado(ev, inicio, cache)
+            if not jugado:
+                # Las 48 h de las casas cuentan desde la hora original del partido
+                con.execute("UPDATE eventos SET detalle = ?, pospuesto = COALESCE(pospuesto, MIN(?, inicio)) WHERE id = ?",
+                            (partido["detalle"], iso(ahora()), ev["id"]))
+                continue
+            partido, invertido = dict(jugado, detalle=f"{jugado['detalle']} (reprogramado)"), inv
         try:
             goles_local, goles_visitante = int(float(partido["goles_local"])), int(float(partido["goles_visitante"]))
         except (TypeError, ValueError):
