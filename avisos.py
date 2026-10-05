@@ -170,8 +170,27 @@ def _mensaje(con, config, mensaje) -> None:
                      "con el número (ej. 1.95 o -105). Escribe /resumen para ver las estadísticas.")
 
 
+def _simulacro(con, config, consulta, partes, previo) -> None:
+    if not partes or partes[0] not in RESPUESTAS:
+        return
+    etiqueta = RESPUESTAS[partes[0]][1]
+    if len(partes) > 1:
+        etiqueta += " en " + next((c["nombre"] for c in config["casas_mexico"] if c["clave"] == partes[1]), partes[1])
+    mensaje = consulta["message"]
+    enviado = datetime.fromtimestamp(mensaje["date"], timezone.utc)
+    inicio = max(enviado, a_fecha(previo)) if previo else enviado
+    minutos = ((inicio + (ahora() - inicio) / 2) - enviado).total_seconds() / 60
+    _llamar("answerCallbackQuery", {"callback_query_id": consulta["id"], "text": etiqueta})
+    _llamar("editMessageText", {"chat_id": mensaje["chat"]["id"], "message_id": mensaje["message_id"],
+                                "text": f"{mensaje.get('text', '')}\n\n{etiqueta} (≈{minutos:.0f} min después del aviso)\n"
+                                        "Simulacro: funcionó, pero no cuenta en las estadísticas."})
+
+
 def _boton(con, config, consulta, previo) -> None:
     partes = consulta.get("data", "").split(":")
+    if partes[0] == "t":  # simulacro: se contesta igual, pero no entra a las estadísticas
+        _simulacro(con, config, consulta, partes[1:], previo)
+        return
     if len(partes) < 2 or partes[0] not in RESPUESTAS or not partes[1].isdigit():
         return
     ident, casa = int(partes[1]), (partes[2] if len(partes) > 2 else None)
