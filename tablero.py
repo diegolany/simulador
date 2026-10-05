@@ -329,7 +329,6 @@ def analisis_apuestas(con, config: dict) -> dict:
 def estado(con, config: dict) -> dict:
     momento = ahora()
     inicial = config["banca_inicial"]
-    referencia = config["casa_referencia"]
     texto_inicio = leer_estado(con, "fecha_inicio")
     inicio = a_fecha(texto_inicio) if texto_inicio else momento
     objetivos = config["objetivos_semana"]
@@ -339,8 +338,55 @@ def estado(con, config: dict) -> dict:
                   e.periodo, e.reloj, e.reloj_texto, e.leido_vivo
            FROM apuestas a JOIN eventos e ON e.id = a.evento_id ORDER BY a.colocada""")]
     principal = _cartera([a for a in todas if a["estrategia"] == "Principal"], inicial, inicio, momento, objetivos)
+    activas = _activas(con, todas, config, momento)
 
-    # Apuestas activas con el movimiento del mercado desde que se apostó
+    historial = [_fila(a) for a in sorted((a for a in todas if a["estado"] != "abierta"),
+                                          key=lambda a: a["liquidada"], reverse=True)[:150]]
+    real = _seguro(_estado_real, con, config, todas, momento)
+    return _estado_simulado(con, config, todas, momento, inicio, inicial, principal, activas, historial, real)
+
+
+def _apuestas_reales(con, todas: list[dict]) -> list[dict]:
+    """Las apuestas que Diego marcó "Aposté" en Telegram, con su monto, su momio y su casa (las de verdad)."""
+    por_id = {a["id"]: a for a in todas}
+    reales = []
+    for v in con.execute("SELECT * FROM avisos WHERE respuesta = 'hecha' ORDER BY enviado"):
+        a = por_id.get(v["apuesta_id"])
+        if not a:
+            continue
+        momio = v["momio_real"] or v["momio_casa"] or v["momio_minimo"] or a["momio"]
+        monto = v["monto_real"]
+        ganancia = {"ganada": monto * (momio - 1), "perdida": -monto, "anulada": 0.0}.get(a["estado"])
+        reales.append({**a, "estrategia": "Principal", "casa": v["casa_real"] or a["casa"], "momio": momio,
+                       "momio_visto": momio, "monto": monto, "ganancia": ganancia,
+                       "colocada": v["respondido"] or v["enviado"], "valor": momio * a["prob_justa"] - 1,
+                       "clv": momio * a["prob_cierre"] - 1 if a["prob_cierre"] else None})
+    return reales
+
+
+def _estado_real(con, config: dict, todas: list[dict], momento) -> dict:
+    """Lo mismo que la simulación, pero solo con lo que se apostó de verdad (banca real, montos y momios reales)."""
+    reales = _apuestas_reales(con, todas)
+    inicial = config["telegram"]["banca_real"]
+    primero = con.execute("SELECT MIN(enviado) FROM avisos WHERE mensaje_id IS NOT NULL").fetchone()[0]
+    inicio = a_fecha(primero) if primero else momento
+    terminadas = [a for a in reales if a["estado"] != "abierta"]
+    medidas = [a for a in reales if a["clv"] is not None and a["estado"] != "anulada"]
+    return {
+        **_cartera(reales, inicial, inicio, momento, config["objetivos_semana"]),
+        "banca_inicial": inicial, "inicio": iso(inicio), "dia": (momento - inicio).days + 1,
+        "practica": config["telegram"]["practica"],
+        "activas": _activas(con, reales, config, momento),
+        "historial": [_fila(a) for a in sorted(terminadas, key=lambda a: a["liquidada"], reverse=True)[:150]],
+        "riesgo": {"confianza": _seguro(riesgo.confianza, [a["clv"] for a in medidas], None,
+                                        [a["momio"] for a in terminadas if a["estado"] in ("ganada", "perdida")]),
+                   "caidas": _seguro(riesgo.caidas, reales, inicial)},
+    }
+
+
+def _activas(con, todas: list[dict], config: dict, momento) -> list[dict]:
+    """Apuestas activas con el movimiento del mercado desde que se apostó."""
+    referencia = config["casa_referencia"]
     activas = []
     for a in todas:
         if a["estado"] != "abierta":
@@ -377,10 +423,10 @@ def estado(con, config: dict) -> dict:
             "progreso": _progreso(a, fase, momento, duracion),
         })
     activas.sort(key=lambda x: x["inicio"])
+    return activas
 
-    historial = [_fila(a) for a in sorted((a for a in todas if a["estado"] != "abierta"),
-                                          key=lambda a: a["liquidada"], reverse=True)[:150]]
 
+def _estado_simulado(con, config, todas, momento, inicio, inicial, principal, activas, historial, real) -> dict:
     # Laboratorio: todas las estrategias compitiendo, cada una con su banca. La confianza usa el CLV encogido:
     # ya descuenta la suerte de tener muchas estrategias compitiendo a la vez
     posts = _seguro(riesgo.posteriores_laboratorio, con) or {}
@@ -435,6 +481,7 @@ def estado(con, config: dict) -> dict:
         "fantasmas": _seguro(resumen_fantasmas, con, config),
         "plan": _seguro(plan_real, con, config),
         "telegram": _seguro(avisos.estadisticas, con, config),
+        "real": real,
         "riesgo": _seguro(riesgo.panel, con, config),
         "cerebro": _seguro(lambda: cerebro.obtener(con, config).resumen()),
         "config_riesgo": {**config["riesgo"], "deslizamiento_base": config["ejecucion"]["deslizamiento_base"]},

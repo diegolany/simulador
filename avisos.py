@@ -334,6 +334,21 @@ def enviar_nuevas(con, config: dict) -> None:
     con.commit()
 
 
+def cerrar_vencidas(con, config: dict) -> None:
+    """Alertas sin contestar cuando ya pasó su vigencia (o empezó el partido): quedan "sin respuesta", se quitan los
+    botones y no cuentan como apuesta real."""
+    limite = iso(ahora() - timedelta(minutes=config["telegram"]["minutos_vigencia"]))
+    for v in con.execute(
+            "SELECT v.apuesta_id, v.mensaje_id, v.texto FROM avisos v JOIN apuestas a ON a.id = v.apuesta_id "
+            "WHERE v.respuesta IS NULL AND v.mensaje_id IS NOT NULL AND (v.enviado <= ? OR a.inicio <= ?)",
+            (limite, iso(ahora()))).fetchall():
+        con.execute("UPDATE avisos SET respuesta = 'sin_respuesta' WHERE apuesta_id = ?", (v["apuesta_id"],))
+        _llamar("editMessageText", {"chat_id": leer_estado(con, "telegram_chat"), "message_id": v["mensaje_id"],
+                                    "text": f"{v['texto']}\n\n<b>⌛ Sin respuesta</b> (venció; no cuenta como apuesta)",
+                                    "parse_mode": "HTML", "disable_web_page_preview": True})
+    con.commit()
+
+
 def _resultado_real(f) -> float:
     momio = f["momio_real"] or f["momio"]
     return f["monto_real"] * (momio - 1) if f["estado"] == "ganada" else -f["monto_real"] if f["estado"] == "perdida" else 0.0
@@ -395,7 +410,7 @@ def estadisticas(con, config: dict) -> dict:
         "tarde": sum(1 for f in filas if f["respuesta"] == "tarde"),
         "hechas": len(hechas), "al_momio": len(al_momio), "bajo_momio": len(hechas) - len(al_momio),
         "no_habia": len(no_habia), "paso": sum(1 for f in enviadas if f["respuesta"] == "paso"),
-        "sin_respuesta": sum(1 for f in enviadas if vencida(f)),
+        "sin_respuesta": sum(1 for f in enviadas if vencida(f) or f["respuesta"] == "sin_respuesta"),
         "pendientes": sum(1 for f in enviadas if f["respuesta"] is None and not vencida(f)),
         "tasa_conseguido": len(al_momio) / intentadas if intentadas else None,
         "respuesta_mediana": statistics.median(respuesta) if respuesta else None,
@@ -437,6 +452,7 @@ def ciclo(con, config: dict) -> None:
     leer_respuestas(con, config)
     if leer_estado(con, "telegram_chat") is not None:
         enviar_nuevas(con, config)
+        cerrar_vencidas(con, config)
         avisar_resultados(con)
     if fallas:
         guardar_estado(con, "telegram_fallas", leer_estado(con, "telegram_fallas", 0) + fallas)

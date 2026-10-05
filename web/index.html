@@ -199,11 +199,17 @@ details.apuesta-detalle > summary .ver { color: var(--serie-1); font-size: 12px;
 .segmentado { display: inline-flex; border: 1px solid var(--borde); border-radius: 999px; overflow: hidden; }
 .segmentado button { border: 0; background: var(--superficie); color: var(--tinta-2); padding: 5px 12px; font-size: 12.5px; }
 .segmentado button.activo { background: var(--tinta); color: var(--pagina); }
+#modo { flex-shrink: 0; }
+#modo button { white-space: nowrap; padding: 5px 10px; }
+#modo button[data-modo="real"].activo { background: var(--serie-2); color: #fff; }
+body.modo-real .heroe { border: 2px solid var(--serie-2); }
 
 footer { margin-top: 28px; color: var(--tenue); font-size: 12.5px; line-height: 1.8; }
 [hidden] { display: none !important; }
 @media (max-width: 560px) {
   .cifra { font-size: 32px; } .boton { display: none; } .sub { display: none; }
+  .barra-dentro { flex-wrap: wrap; row-gap: 8px; } .acciones { width: 100%; flex-wrap: wrap; justify-content: space-between; }
+  #modo { order: -1; flex-basis: 100%; } #modo button { flex: 1; }
   .boleto-pie { grid-template-columns: repeat(2, 1fr); } .boleto-pie div:nth-child(3) { border-left: 0; }
   .boleto-pie div:nth-child(n+3) { border-top: 1px solid var(--reticula); }
 }
@@ -232,6 +238,10 @@ footer { margin-top: 28px; color: var(--tenue); font-size: 12.5px; line-height: 
             <b>Run workflow</b>. El tablero se actualiza en 1–2 minutos.</div>
         </div>
       </details>
+      <div class="segmentado" id="modo" title="Ver la simulación o lo que se apostó de verdad">
+        <button data-modo="simulacion" class="activo">🧪 Simulación</button>
+        <button data-modo="real">💰 Real</button>
+      </div>
       <button class="boton-icono" id="tema" title="Cambiar tema claro / oscuro" aria-label="Cambiar tema">◐</button>
       <button class="boton" id="buscar" title="Busca momios ahora, respetando los créditos del día">Buscar momios</button>
     </div>
@@ -819,7 +829,7 @@ function dibujarCurva(d) {
 document.querySelectorAll('#rango-curva button').forEach(b => b.addEventListener('click', () => {
   rangoCurva = b.dataset.rango;
   document.querySelectorAll('#rango-curva button').forEach(x => x.classList.toggle('activo', x === b));
-  datos && dibujarCurva(datos);
+  datos && dibujarCurva(vista());
 }));
 
 function semanas(d) {
@@ -1373,11 +1383,36 @@ function sistema(d) {
   ].join('<br>');
 }
 
+// Modo real: las mismas vistas, pero con lo que Diego apostó de verdad (botón "Aposté" en Telegram)
+let modo = 'simulacion';
+try { modo = localStorage.getItem('modo') || 'simulacion'; } catch (e) {}
+const SOLO_SIMULACION = ['riesgo', 'laboratorio', 'diario', 'bitacora'];
+const vista = () => modo === 'real' && datos?.real ? { ...datos, ...datos.real } : datos;
+
+function aplicarModo() {
+  const real = modo === 'real';
+  document.querySelectorAll('#modo button').forEach(b => b.classList.toggle('activo', b.dataset.modo === modo));
+  document.body.classList.toggle('modo-real', real);
+  SOLO_SIMULACION.forEach(p => { $(`.pestanas [data-pestana="${p}"]`).hidden = real; });
+  if (real && SOLO_SIMULACION.includes(location.hash.slice(1))) mostrar('resumen');
+}
+document.querySelectorAll('#modo button').forEach(b => b.addEventListener('click', () => {
+  modo = b.dataset.modo;
+  try { localStorage.setItem('modo', modo); } catch (e) {}
+  aplicarModo(); pintar();
+}));
+
 function pintar() {
   if (!datos) return;
-  heroe(datos); kpis(datos); semanas(datos); deportes(datos); creditos(datos); dibujarCurva(datos);
-  boletos(datos); historial(datos); riesgoVista(datos); laboratorio(datos); evidencia(datos); planVista(datos); diarioVista(datos); bitacora(datos);
-  sistema(datos);
+  const d = vista(), real = modo === 'real';
+  $('#etiqueta-banca').textContent = !real ? 'Banca de la cartera Principal'
+    : !datos.real ? 'Modo real: aparece en la siguiente vuelta del bot'
+    : `Banca real (Caliente + Codere)${datos.real.practica ? ' · práctica: aún sin dinero' : ''}`;
+  heroe(d); kpis(d); semanas(d); deportes(d); creditos(d); dibujarCurva(d);
+  boletos(d); historial(d); planVista(d);
+  if (!real) { riesgoVista(d); laboratorio(d); evidencia(d); diarioVista(d); bitacora(d); }
+  sistema(d);
+  if (real) $('#subtitulo').textContent = `Día ${d.dia} del modo real · solo las apuestas que marcaste "Aposté" en Telegram`;
 }
 
 async function actualizar() {
@@ -1409,17 +1444,17 @@ document.querySelectorAll('.pestanas button').forEach(b => b.addEventListener('c
 document.querySelectorAll('#filtros button').forEach(b => b.addEventListener('click', () => {
   filtro = b.dataset.filtro;
   document.querySelectorAll('#filtros button').forEach(x => x.classList.toggle('activo', x === b));
-  datos && (boletos(datos), historial(datos));
+  datos && (boletos(vista()), historial(vista()));
 }));
 document.querySelectorAll('#filtro-origen button').forEach(b => b.addEventListener('click', () => {
   origenFiltro = b.dataset.origen;
   document.querySelectorAll('#filtro-origen button').forEach(x => x.classList.toggle('activo', x === b));
-  datos && (boletos(datos), historial(datos));
+  datos && (boletos(vista()), historial(vista()));
 }));
 
 function aplicarTema(tema) {
   if (tema) document.documentElement.dataset.theme = tema; else delete document.documentElement.dataset.theme;
-  datos && (dibujarCurva(datos), creditos(datos), dibujarAbanico(datos));
+  datos && (dibujarCurva(vista()), creditos(datos), dibujarAbanico(datos));
 }
 $('#tema').addEventListener('click', () => {
   const oscuro = getComputedStyle(document.documentElement).colorScheme.includes('dark');
@@ -1428,7 +1463,7 @@ $('#tema').addEventListener('click', () => {
   aplicarTema(tema);
 });
 try { aplicarTema(localStorage.getItem('tema')); } catch (e) {}
-matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => datos && (dibujarCurva(datos), creditos(datos), dibujarAbanico(datos)));
+matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => datos && (dibujarCurva(vista()), creditos(datos), dibujarAbanico(datos)));
 
 if (ESTATICO) $('#buscar').hidden = true;
 // Las acciones corren el bot en GitHub: el enlace lleva a la página del workflow del repositorio
@@ -1450,9 +1485,10 @@ const desdeEnlace = () => {
 };
 addEventListener('hashchange', desdeEnlace);
 desdeEnlace();
+aplicarModo();
 actualizar();
 setInterval(actualizar, ESTATICO ? 60000 : 15000);
-setInterval(() => datos && (boletos(datos), sistema(datos)), 30000);
+setInterval(() => datos && (boletos(vista()), sistema(vista()), modo === 'real' && pintar()), 30000);
 </script>
 </body>
 </html>
