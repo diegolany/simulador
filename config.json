@@ -21,6 +21,7 @@
   "valor_sospechoso_dk": 0.04,
   "casas_mexico": [
     {"clave": "caliente", "nombre": "Caliente", "url": "https://sports.caliente.mx/es_MX", "lectura": true, "cuenta": true,
+     "app_url": "https://www.caliente.mx/open-apps/sports/inicio",
      "bono": "Anuncia $1,000 sin depósito y duplica el 1er depósito hasta $7,000 (falta revisar términos)"},
     {"clave": "codere_mx", "nombre": "Codere", "url": "https://apuestas.codere.mx/es_MX", "lectura": true, "cuenta": true,
      "bono": "Anuncia bono de bienvenida hasta $7,000 (falta revisar términos)"},

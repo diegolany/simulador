@@ -204,7 +204,8 @@ def enviar_nuevas(con, config: dict) -> None:
             break
         texto, monto, minimo = _texto(a, config)
         cuentas = _cuentas(config)
-        botones = [[{"text": f"Abrir {c['nombre']}", "url": c["url"]} for c in cuentas],
+        # app_url: enlace universal que abre la app instalada en el celular (si la casa lo tiene)
+        botones = [[{"text": f"Abrir {c['nombre']}", "url": c.get("app_url") or c["url"]} for c in cuentas],
                    [{"text": f"✅ {c['nombre']}", "callback_data": f"h:{a['id']}:{c['clave']}"} for c in cuentas],
                    [{"text": "❌ No estaba", "callback_data": f"n:{a['id']}"},
                     {"text": "⏭️ Paso", "callback_data": f"p:{a['id']}"}]]
