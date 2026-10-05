@@ -1,6 +1,6 @@
 // Lee los momios "a ganar" de una página de liga de Caliente o Codere México (misma plataforma, sin iniciar sesión).
 // Se ejecuta en el navegador durante una sesión con Claude; devuelve JSON compacto de los próximos 50 h:
-// [[equipo1, equipo2, inicio UTC, momio1, momio empate | null, momio2], ...]
+// [[equipo1, equipo2, inicio UTC, momio1, momio empate | null, momio2, enlace del partido], ...]
 // Formato A (deportes de EE. UU.): dos filas por partido y columna "A Ganar" (td.mkt-sort-H2HT).
 // Formato B (fútbol): una fila por partido con tres botones: local, empate ("Empate" o "X") y visitante.
 // Se omiten los partidos en vivo (botones "inplay" o deshabilitados). La página muestra la hora en GMT-6.
@@ -32,18 +32,19 @@
     p.equipos.push(nombre);
     p.momios[nombre] = decimal(b);
     p.inicio = p.inicio || hora(tr);
+    p.url = p.url || a.href;
   }
   for (const tr of document.querySelectorAll('tr')) {
     const bs = [...tr.querySelectorAll(':scope > td.seln button.price')];
     if (bs.length !== 3 || bs.some(enVivo)) continue;
     const nombres = bs.map(b => b.querySelector('.seln-name')?.textContent.trim());
     partidos[idEvento(bs[0])] = {
-      equipos: [nombres[0], nombres[2]], inicio: hora(tr),
+      equipos: [nombres[0], nombres[2]], inicio: hora(tr), url: tr.querySelector('a[href*="/e/"]')?.href,
       momios: Object.fromEntries(bs.map((b, i) => [i === 1 ? 'Empate' : nombres[i], decimal(b)])),
     };
   }
   const limite = Date.now() + 50 * 3.6e6;
   return JSON.stringify(Object.values(partidos)
     .filter(p => p.equipos.length === 2 && p.inicio && new Date(p.inicio) < limite && Object.values(p.momios).every(x => x > 1))
-    .map(p => [p.equipos[0], p.equipos[1], p.inicio.slice(0, 16), p.momios[p.equipos[0]], p.momios.Empate ?? null, p.momios[p.equipos[1]]]));
+    .map(p => [p.equipos[0], p.equipos[1], p.inicio.slice(0, 16), p.momios[p.equipos[0]], p.momios.Empate ?? null, p.momios[p.equipos[1]], p.url || null]));
 })()

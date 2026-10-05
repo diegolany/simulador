@@ -14,6 +14,7 @@ import os
 import re
 import statistics
 import urllib.error
+import urllib.parse
 import urllib.request
 from datetime import datetime, timedelta, timezone
 
@@ -96,7 +97,7 @@ def _texto(a, config) -> tuple[str, float, float]:
     casa = a["casa"].replace("_", " ").title()
     lineas = [
         "🧪 <b>PRÁCTICA, sin dinero</b>" if t["practica"] else "💰 <b>APUESTA REAL</b>",
-        f"{icono(a['deporte'])} {html.escape(a['liga'] or a['deporte'])}:<b>{html.escape(a['local'])} vs {html.escape(a['visitante'])}</b>",
+        f"{icono(a['deporte'])} {html.escape(a['liga'] or a['deporte'])}: <b>{html.escape(a['local'])} vs {html.escape(a['visitante'])}</b>",
         f"🕒 Empieza {inicio:%d/%m %H:%M}",
         f"🎯 Apostar a: <b>{html.escape(_seleccion(a['seleccion']))}</b>",
         f"📈 El bot la tomó en {html.escape(casa)} a {a['momio']:.2f} ({americano(a['momio'])}), "
@@ -196,6 +197,22 @@ def _boton(con, config, consulta, previo) -> None:
     anotar(con, "sistema", f"Telegram: {etiqueta.split(' ', 1)[1].lower()} (apuesta #{ident}).")
 
 
+def _boton_casa(con, casa, a) -> dict:
+    """Abre el partido exacto si salió en un barrido; si no, la liga o la sección del deporte. Con `app_url`
+    (enlace universal de la casa) se abre en la app del celular en lugar del navegador."""
+    fila = con.execute("SELECT url FROM enlaces WHERE evento_id = ? AND casa = ?", (a["evento_id"], casa["clave"])).fetchone()
+    ruta = (casa.get("ligas") or {}).get(a["deporte"]) or (casa.get("deportes") or {}).get(a["deporte"].split("_")[0])
+    if fila:
+        destino, texto = fila[0], f"🎯 {casa['nombre']}: partido"
+    elif ruta:
+        destino, texto = casa["web"] + ruta, f"{casa['nombre']}: liga"
+    else:
+        destino, texto = casa["url"], f"Abrir {casa['nombre']}"
+    if casa.get("app_url"):
+        destino = casa["app_url"].format(urllib.parse.quote(destino, safe=""))
+    return {"text": texto, "url": destino}
+
+
 def enviar_nuevas(con, config: dict) -> None:
     desde = leer_estado(con, "avisos_desde", 0)
     filas = con.execute(
@@ -213,8 +230,7 @@ def enviar_nuevas(con, config: dict) -> None:
             break
         texto, monto, minimo = _texto(a, config)
         cuentas = _cuentas(config)
-        # app_url: enlace universal que abre la app instalada en el celular (si la casa lo tiene)
-        botones = [[{"text": f"Abrir {c['nombre']}", "url": c.get("app_url") or c["url"]} for c in cuentas],
+        botones = [[_boton_casa(con, c, a) for c in cuentas],
                    [{"text": f"✅ {c['nombre']}", "callback_data": f"h:{a['id']}:{c['clave']}"} for c in cuentas],
                    [{"text": "❌ No estaba", "callback_data": f"n:{a['id']}"},
                     {"text": "⏭️ Paso", "callback_data": f"p:{a['id']}"}]]

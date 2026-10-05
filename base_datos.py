@@ -174,6 +174,14 @@ CREATE TABLE IF NOT EXISTS avisos (
     monto_real REAL,                -- monto sugerido con la banca real
     resultado_avisado INTEGER NOT NULL DEFAULT 0
 );
+
+-- Enlace de cada partido en las casas mexicanas (sale de los barridos): las alertas abren el partido exacto
+CREATE TABLE IF NOT EXISTS enlaces (
+    evento_id TEXT NOT NULL,
+    casa TEXT NOT NULL,
+    url TEXT NOT NULL,
+    PRIMARY KEY (evento_id, casa)
+);
 """
 
 

@@ -362,6 +362,8 @@ def procesar_externos(con, config: dict, activos: dict, restantes: int) -> int:
             anotar(con, "sistema", f"{nombre}: se leyeron {len(datos.get('partidos', []))} partidos, pero ninguno coincide "
                                    f"con los partidos que sigue el bot ({usados} créditos usados).")
             continue
+        con.executemany("INSERT OR REPLACE INTO enlaces (evento_id, casa, url) VALUES (?, ?, ?)",
+                        [(e, casa["clave"], v["url"]) for e, v in mapa.items() if v.get("url")])
         colocadas, resumen = estrategias.apostar_externo(con, config, mapa, datos["capturado"],
                                                          f"Momio de {nombre} (lectura manual)")
         m = resumen["mejor"]

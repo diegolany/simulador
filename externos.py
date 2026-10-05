@@ -37,7 +37,7 @@ def emparejar(con, datos: dict) -> dict:
             continue
         por_deporte.setdefault(p["deporte"], []).append({
             "inicio": a_fecha(p["inicio"]), "local": [p["equipos"][0]], "visitante": [p["equipos"][1]],
-            "momios": p["momios"]})
+            "momios": p["momios"], "url": p.get("url")})
     mapa = {}
     for deporte, candidatos in por_deporte.items():
         for ev in con.execute("SELECT id, local, visitante, inicio FROM eventos WHERE deporte = ? AND inicio > ?",
@@ -54,7 +54,8 @@ def emparejar(con, datos: dict) -> dict:
             if momios.get("Empate"):
                 precios["Draw"] = momios["Empate"]
             if all(v and v > 1 for v in precios.values()):
-                mapa[ev["id"]] = {"casa": datos.get("casa", "caliente"), "precios": precios, "deporte": deporte}
+                mapa[ev["id"]] = {"casa": datos.get("casa", "caliente"), "precios": precios, "deporte": deporte,
+                                  "url": partido.get("url")}
     return mapa
 
 
