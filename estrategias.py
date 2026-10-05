@@ -69,7 +69,7 @@ ESTRATEGIAS_INICIALES = [
     # Diego puede abrir cuenta (sus momios llegan por los barridos manuales). Es la cartera que pasaría a dinero real.
     ("México real", "valor", "mexico",
      "Reglas de la Principal solo en casas mexicanas con licencia (Caliente, Codere): lo que se podría apostar de verdad",
-     {"umbral": 0.015, "casas_permitidas": ["caliente", "codere_mx", "strendus", "betano_mx"]}),
+     {"umbral": 0.015, "casas_permitidas": ["caliente", "codere_mx", "strendus", "betano_mx", "playdoit", "draftea"]}),
     # Experimentos con momios gratuitos de DraftKings: apuestan aunque la diferencia con el precio justo sea
     # mínima, con monto fijo pequeño, para aprender rápido qué forma de apostar ahí deja dinero.
     # Solo informan: nunca cambian las reglas de la Principal.

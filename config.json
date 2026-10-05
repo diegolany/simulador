@@ -20,14 +20,18 @@
   "max_minutos_referencia_valor": 60,
   "valor_sospechoso_dk": 0.04,
   "casas_mexico": [
-    {"clave": "caliente", "nombre": "Caliente", "url": "https://sports.caliente.mx/es_MX", "lectura": true, "cuenta": false,
+    {"clave": "caliente", "nombre": "Caliente", "url": "https://sports.caliente.mx/es_MX", "lectura": true, "cuenta": true,
      "bono": "Anuncia $1,000 sin depósito y duplica el 1er depósito hasta $7,000 (falta revisar términos)"},
     {"clave": "codere_mx", "nombre": "Codere", "url": "https://apuestas.codere.mx/es_MX", "lectura": true, "cuenta": false,
      "bono": "Anuncia bono de bienvenida hasta $7,000 (falta revisar términos)"},
     {"clave": "strendus", "nombre": "Strendus", "url": "https://www.strendus.com.mx/sports", "lectura": false, "cuenta": false,
      "bono": "Por revisar"},
     {"clave": "betano_mx", "nombre": "Betano", "url": "https://www.betano.mx", "lectura": false, "cuenta": false,
-     "bono": "Por revisar (el navegador de Claude no pudo abrirla)"}
+     "bono": "Por revisar (el navegador de Claude no pudo abrirla)"},
+    {"clave": "playdoit", "nombre": "Playdoit", "url": "https://www.playdoit.mx", "lectura": false, "cuenta": false,
+     "bono": "Permiso DGJS/DCRCA/P-01/2021. $1,000 al registrarte (rollover 12x) + 100% del 1er depósito hasta $3,500 (rollover 5x de depósito+bono, 30 días, mínimo $200)"},
+    {"clave": "draftea", "nombre": "Draftea", "url": "https://www.draftea.mx", "lectura": false, "cuenta": false,
+     "bono": "Permiso DGAJS/SCEVF/P-06/2005-TER. 1er depósito x2 en 4 apuestas gratis, sin rollover (última campaña: depósito de $100 a $2,000)"}
   ],
   "fantasmas": {
     "valor_minimo": -0.02,
