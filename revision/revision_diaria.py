@@ -165,6 +165,23 @@ def metricas(base: Path):
     m = cerebro.obtener(con, cfg)
     print(f"cerebro: factor {m.factor:.2f} con {m.n_efectivo:.0f} mediciones efectivas")
 
+    titulo("TELEGRAM Y MODO REAL")
+    import re as _re
+    import avisos
+    s = avisos.estadisticas(con, cfg)
+    print(_re.sub(r"</?\w+>", "", avisos.texto_resumen(s)))
+    desde_avisos = leer("avisos_desde", 0)
+    sin_aviso = con.execute("""SELECT COUNT(*) FROM apuestas a JOIN estrategias e ON e.nombre = a.estrategia
+                               LEFT JOIN avisos v ON v.apuesta_id = a.id WHERE a.id > ? AND e.rol IN ('principal', 'mexico')
+                               AND v.apuesta_id IS NULL""", (desde_avisos,)).fetchone()[0]
+    print(f"conectado: {s['conectado']} · última lectura de Telegram: {s['ultima_lectura']} · "
+          f"apuestas de la Principal/México real sin alerta: {sin_aviso}")
+    for c in cfg["casas_mexico"]:
+        if c.get("cuenta"):
+            ultimo_barrido = con.execute("SELECT MAX(capturado) FROM senales WHERE casa = ?", (c["clave"],)).fetchone()[0]
+            enlaces = con.execute("SELECT COUNT(*) FROM enlaces WHERE casa = ?", (c["clave"],)).fetchone()[0]
+            print(f"  {c['nombre']}: último barrido {ultimo_barrido or '—'} · partidos con enlace directo {enlaces}")
+
     titulo("SEÑALES DE ALERTA (últimas 24 h)")
     desde = base_datos.iso(ahora - timedelta(hours=24))
     alertas = []
@@ -186,6 +203,12 @@ def metricas(base: Path):
     ultimo = leer("ultimo_ciclo")
     if ultimo and ahora - base_datos.a_fecha(ultimo) > timedelta(minutes=30):
         alertas.append(f"el bot no corre desde {ultimo}")
+    if s["fallas"]:
+        alertas.append(f"Telegram: {s['fallas']} fallas de envío acumuladas")
+    if sin_aviso:
+        alertas.append(f"Telegram: {sin_aviso} apuestas de la Principal/México real no se avisaron")
+    if s["conectado"] and s["ultima_lectura"] and ahora - base_datos.a_fecha(s["ultima_lectura"]) > timedelta(minutes=45):
+        alertas.append(f"Telegram: no se leen respuestas desde {s['ultima_lectura']}")
     print("ninguna" if not alertas else "\n".join("  " + a for a in alertas))
     con.close()
 
