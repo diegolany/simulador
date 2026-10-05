@@ -117,7 +117,8 @@ def _texto(a, config, sugerida=None) -> tuple[str, float, float]:
     vence = min(a_fecha(a["inicio"]), ahora() + timedelta(minutes=t["minutos_vigencia"])).astimezone()
     minimo = (1 + t["valor_minimo"]) / a["prob_justa"]
     monto = max(10, round(a["monto"] / config["banca_inicial"] * t["banca_real"] / 10) * 10)
-    casa = a["casa"].replace("_", " ").title()
+    casa = next((c["nombre"] for c in config["casas_mexico"] if c["clave"] == a["casa"]),
+                a["casa"].replace("_", " ").title())
     lineas = [
         "🧪 <b>PRÁCTICA, sin dinero</b>" if t["practica"] else "💰 <b>APUESTA REAL</b>",
         f"{icono(a['deporte'])} {html.escape(a['liga'] or a['deporte'])}: <b>{html.escape(a['local'])} vs {html.escape(a['visitante'])}</b>",
