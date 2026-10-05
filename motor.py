@@ -354,7 +354,10 @@ def procesar_externos(con, config: dict, activos: dict, restantes: int) -> int:
         for deporte in ligas:
             ultima = _ultima_descarga(con, deporte)
             fresca = ultima and ahora() - ultima < timedelta(minutes=45)
-            if not fresca and restantes - gastado - usados - config["reserva_creditos"] >= 1:
+            # Por ahora los créditos son solo para calibrar la simulación: el barrido usa la foto de Pinnacle que haya
+            # (las estrategias de valor no apuestan si tiene más de 60 min)
+            if not fresca and config.get("barridos_con_creditos") and \
+                    restantes - gastado - usados - config["reserva_creditos"] >= 1:
                 usados += apostar_con_captura(con, config, deporte, activos.get(deporte, deporte), "barrido")
         gastado += usados
         mapa = externos.emparejar(con, datos)

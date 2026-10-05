@@ -56,6 +56,7 @@
      "bono": "Permiso DGAJS/SCEVF/P-06/2005-TER. 1er depósito x2 en 4 apuestas gratis, sin rollover (última campaña: depósito de $100 a $2,000)"}
   ],
   "bonos_activos": false,
+  "barridos_con_creditos": false,
   "telegram": {"activo": true, "practica": true, "banca_real": 10000, "valor_minimo": 0.01, "minutos_vigencia": 60},
   "fantasmas": {
     "valor_minimo": -0.02,
