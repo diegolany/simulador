@@ -18,11 +18,12 @@ import urllib.parse
 import urllib.request
 from datetime import datetime, timedelta, timezone
 
+import externos
 from base_datos import a_fecha, ahora, anotar, guardar_estado, iso, leer_estado
 
 ROLES = ("principal", "mexico")
 MAX_POR_CICLO = 8
-RESPUESTAS = {"h": ("hecha", "✅ La hiciste"), "n": ("no_habia", "❌ No estaba el momio"), "p": ("paso", "⏭️ La pasaste")}
+RESPUESTAS = {"h": ("hecha", "✅ Apostaste"), "n": ("no_habia", "❌ No cuadró el momio"), "p": ("paso", "⏭️ No apostaste")}
 fallas = 0  # llamadas a Telegram que fallaron en este ciclo
 
 
@@ -109,7 +110,8 @@ def _cuentas(config) -> list:
     return [c for c in config["casas_mexico"] if c.get("cuenta")]
 
 
-def _texto(a, config) -> tuple[str, float, float]:
+def _texto(a, config, sugerida=None) -> tuple[str, float, float]:
+    """sugerida: (nombre de la casa mexicana recomendada, su último momio leído o None)."""
     t = config["telegram"]
     inicio = a_fecha(a["inicio"]).astimezone()
     vence = min(a_fecha(a["inicio"]), ahora() + timedelta(minutes=t["minutos_vigencia"])).astimezone()
@@ -121,12 +123,15 @@ def _texto(a, config) -> tuple[str, float, float]:
         f"{icono(a['deporte'])} {html.escape(a['liga'] or a['deporte'])}: <b>{html.escape(a['local'])} vs {html.escape(a['visitante'])}</b>",
         f"🕒 Empieza {inicio:%d/%m %H:%M}",
         f"🎯 Apostar a: <b>{html.escape(_seleccion(a['seleccion']))}</b>",
+        *([f"🏦 Apostar en: <b>{sugerida[0]}</b>" + (
+            f", paga {sugerida[1]:.2f} ({americano(sugerida[1])})"
+            + (" ⚠️ menos del mínimo en la última lectura" if sugerida[1] < minimo else "") if sugerida[1] else "")]
+          if sugerida else []),
         f"📈 El bot la tomó en {html.escape(casa)} a {a['momio']:.2f} ({americano(a['momio'])}), "
         f"valor {a['valor']:+.1%}",
         f"✅ Hazla solo si te pagan <b>{minimo:.2f} ({americano(minimo)}) o más</b>",
         f"💵 Monto (banca de ${t['banca_real']:,.0f}): <b>${monto:,.0f}</b>",
         f"⏳ Vale hasta las {vence:%H:%M}",
-        "✍️ Si la hiciste, respóndeme este mensaje con monto, momio y casa (ej. <code>50 +460 codere</code>)",
     ]
     if a["rol"] == "mexico":
         lineas.insert(1, "🇲🇽 Momio de casa mexicana")
@@ -224,10 +229,17 @@ def _boton(con, config, consulta, previo) -> None:
     if len(partes) < 2 or partes[0] not in RESPUESTAS or not partes[1].isdigit():
         return
     ident, casa = int(partes[1]), (partes[2] if len(partes) > 2 else None)
-    fila = con.execute("SELECT texto, mensaje_id, enviado FROM avisos WHERE apuesta_id = ?", (ident,)).fetchone()
+    fila = con.execute("SELECT texto, mensaje_id, enviado, casa_sugerida, momio_casa, momio_minimo FROM avisos "
+                       "WHERE apuesta_id = ?", (ident,)).fetchone()
     if not fila:
         return
     respuesta, etiqueta = RESPUESTAS[partes[0]]
+    momio = None
+    if respuesta == "hecha" and not casa:  # "Aposté": en la casa recomendada, al monto sugerido
+        casa = fila["casa_sugerida"]
+        # momio: el leído en esa casa si llegaba al mínimo; si no se conocía, el mínimo (solo se apuesta si paga eso)
+        momio = fila["momio_casa"] if fila["momio_casa"] and fila["momio_casa"] >= (fila["momio_minimo"] or 0) \
+            else fila["momio_minimo"]
     if casa:
         nombre = next((c["nombre"] for c in config["casas_mexico"] if c["clave"] == casa), casa)
         etiqueta += f" en {nombre}"
@@ -235,12 +247,10 @@ def _boton(con, config, consulta, previo) -> None:
     fin, enviado = ahora(), a_fecha(fila["enviado"])
     inicio = max(enviado, a_fecha(previo)) if previo else enviado
     momento = iso(inicio + (fin - inicio) / 2)
-    con.execute("UPDATE avisos SET respuesta = ?, respondido = ?, casa_real = ? WHERE apuesta_id = ?",
-                (respuesta, momento, casa, ident))
+    con.execute("UPDATE avisos SET respuesta = ?, respondido = ?, casa_real = ?, momio_real = COALESCE(momio_real, ?) "
+                "WHERE apuesta_id = ?", (respuesta, momento, casa if respuesta == "hecha" else None, momio, ident))
     _llamar("answerCallbackQuery", {"callback_query_id": consulta["id"], "text": etiqueta})
-    extra = ("\n<i>Si apostaste otro monto o te dieron otro momio, respóndeme este mensaje (ej. 100 +450).</i>"
-             if respuesta == "hecha" else
-        "\n<i>Si quieres, respóndeme este mensaje con el momio que había.</i>" if respuesta == "no_habia" else "")
+    extra = ""
     _llamar("editMessageText", {"chat_id": leer_estado(con, "telegram_chat"), "message_id": fila["mensaje_id"],
                                 "text": f"{fila['texto']}\n\n<b>{etiqueta}</b>{extra}", "parse_mode": "HTML",
                                 "disable_web_page_preview": True})
@@ -263,6 +273,31 @@ def _boton_casa(con, casa, a) -> dict:
     return {"text": texto, "url": destino}
 
 
+def _precios_mexico(con, config) -> dict:
+    """{evento_id: {clave de casa: {selección: momio}}} del último barrido de cada casa con cuenta (si es reciente)."""
+    precios = {}
+    for c in _cuentas(config):
+        datos = externos.cargar(c["clave"])
+        if datos and externos.reciente(datos):
+            for evento, v in externos.emparejar(con, datos).items():
+                precios.setdefault(evento, {})[c["clave"]] = v["precios"]
+    return precios
+
+
+def _recomendar(a, cuentas, precios) -> tuple:
+    """La casa mexicana donde hacer la apuesta: la de la propia apuesta si es de México real; si no, la que pagó más
+    en el último barrido; sin lectura, la primera con cuenta (Caliente abre la app directo)."""
+    propia = next((c for c in cuentas if c["clave"] == a["casa"]), None)
+    if propia:
+        return propia, a["momio_visto"] or a["momio"]
+    leidas = [(precios.get(a["evento_id"], {}).get(c["clave"], {}).get(a["seleccion"]), c) for c in cuentas]
+    leidas = [(m, c) for m, c in leidas if m]
+    if leidas:
+        m, c = max(leidas, key=lambda x: x[0])
+        return c, m
+    return (cuentas[0], None) if cuentas else (None, None)
+
+
 def enviar_nuevas(con, config: dict) -> None:
     desde = leer_estado(con, "avisos_desde", 0)
     filas = con.execute(
@@ -270,7 +305,8 @@ def enviar_nuevas(con, config: dict) -> None:
         "JOIN estrategias s ON s.nombre = a.estrategia LEFT JOIN avisos v ON v.apuesta_id = a.id "
         f"WHERE a.id > ? AND s.rol IN ({','.join('?' * len(ROLES))}) AND v.apuesta_id IS NULL ORDER BY a.id",
         (desde, *ROLES)).fetchall()
-    enviados = 0
+    enviados, cuentas = 0, _cuentas(config)
+    precios = _precios_mexico(con, config) if filas else {}
     for a in filas:
         if a["inicio"] <= iso(ahora()):  # ya empezó: no tiene caso avisar
             con.execute("INSERT INTO avisos (apuesta_id, enviado, respuesta) VALUES (?, ?, 'tarde')",
@@ -278,17 +314,21 @@ def enviar_nuevas(con, config: dict) -> None:
             continue
         if enviados >= MAX_POR_CICLO:
             break
-        texto, monto, minimo = _texto(a, config)
-        cuentas = _cuentas(config)
-        botones = [[_boton_casa(con, c, a) for c in cuentas],
-                   [{"text": f"✅ {c['nombre']}", "callback_data": f"h:{a['id']}:{c['clave']}"} for c in cuentas],
-                   [{"text": "❌ No estaba", "callback_data": f"n:{a['id']}"},
-                    {"text": "⏭️ Paso", "callback_data": f"p:{a['id']}"}]]
+        casa, momio_casa = _recomendar(a, cuentas, precios)
+        texto, monto, minimo = _texto(a, config, (casa["nombre"], momio_casa) if casa else None)
+        enlaces = [_boton_casa(con, c, a) for c in cuentas]
+        for b, c in zip(enlaces, cuentas):
+            if casa and c["clave"] == casa["clave"]:
+                b["text"] = "⭐ " + b["text"]
+        botones = [enlaces, [{"text": "✅ Aposté", "callback_data": f"h:{a['id']}"}],
+                   [{"text": "❌ No cuadra", "callback_data": f"n:{a['id']}"},
+                    {"text": "⏭️ No apostar", "callback_data": f"p:{a['id']}"}]]
         enviado = _enviar(con, texto, [fila for fila in botones if fila])
         if not enviado:
             break  # Telegram no respondió: se reintenta en el siguiente ciclo
-        con.execute("INSERT INTO avisos (apuesta_id, mensaje_id, texto, enviado, monto_real, momio_minimo) "
-                    "VALUES (?, ?, ?, ?, ?, ?)", (a["id"], enviado["message_id"], texto, iso(ahora()), monto, minimo))
+        con.execute("INSERT INTO avisos (apuesta_id, mensaje_id, texto, enviado, monto_real, momio_minimo, casa_sugerida, "
+                    "momio_casa) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                    (a["id"], enviado["message_id"], texto, iso(ahora()), monto, minimo, casa and casa["clave"], momio_casa))
         enviados += 1
     con.commit()
 

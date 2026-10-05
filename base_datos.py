@@ -171,6 +171,8 @@ CREATE TABLE IF NOT EXISTS avisos (
     momio_real REAL,                -- momio que le dieron o que vio (vacío = el sugerido)
     casa_real TEXT,                 -- casa mexicana donde la hizo
     momio_minimo REAL,              -- momio mínimo que se le pidió
+    casa_sugerida TEXT,             -- casa mexicana que recomendó el bot
+    momio_casa REAL,                -- último momio leído en esa casa (vacío = sin barrido reciente)
     monto_real REAL,                -- monto sugerido con la banca real
     resultado_avisado INTEGER NOT NULL DEFAULT 0
 );
@@ -208,7 +210,8 @@ def conectar() -> sqlite3.Connection:
               ("apuestas", "multiplicador", "REAL"), ("consumo_api", "partidos", "INTEGER"),
               ("eventos", "pospuesto", "TEXT"), ("eventos", "periodo", "INTEGER"), ("eventos", "reloj", "REAL"),
               ("eventos", "reloj_texto", "TEXT"), ("eventos", "leido_vivo", "TEXT"), ("apuestas", "analisis", "TEXT"),
-              ("apuestas", "kelly", "REAL"), ("avisos", "casa_real", "TEXT"), ("avisos", "momio_minimo", "REAL"))
+              ("apuestas", "kelly", "REAL"), ("avisos", "casa_real", "TEXT"), ("avisos", "momio_minimo", "REAL"),
+              ("avisos", "casa_sugerida", "TEXT"), ("avisos", "momio_casa", "REAL"))
     for tabla, columna, tipo in nuevas:  # bases creadas antes de esas columnas
         if columna not in {c[1] for c in con.execute(f"PRAGMA table_info({tabla})")}:
             con.execute(f"ALTER TABLE {tabla} ADD COLUMN {columna} {tipo}")
