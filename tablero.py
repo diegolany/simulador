@@ -88,7 +88,8 @@ def _seguro(funcion, *args):
         return None
 
 # Casas cuyos momios no cuestan créditos: DraftKings (ESPN) y las casas mexicanas que se leen a mano
-ORIGENES_GRATIS = ("draftkings", "caliente", "codere_mx", "strendus", "betano_mx", "playdoit", "draftea")
+ORIGENES_GRATIS = ("draftkings", "caliente", "codere_mx", "strendus", "betano_mx", "playdoit", "draftea",
+                   "caliente_mejorado", "codere_mx_mejorado")
 DEPORTES = {"soccer": "Fútbol", "basketball": "Básquetbol", "americanfootball": "Fútbol americano",
             "baseball": "Béisbol", "icehockey": "Hockey", "mma": "MMA", "boxing": "Box", "tennis": "Tenis"}
 

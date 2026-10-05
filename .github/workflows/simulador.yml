@@ -58,6 +58,14 @@ jobs:
             exit 1
           fi
 
+      - name: Recuperar los barridos de casas mexicanas
+        run: |
+          # Los barridos de Caliente/Codere se suben a la rama "barridos" (externos/guardar.py)
+          if git ls-remote --exit-code --heads origin barridos > /dev/null; then
+            git fetch -q origin barridos:refs/remotes/origin/barridos
+            git checkout origin/barridos -- externos/
+          fi
+
       - name: Ciclo del motor
         run: |
           case "${{ inputs.modo }}" in

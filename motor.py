@@ -75,6 +75,13 @@ def inicializar(con, config: dict) -> None:
                               "solo ¼ de Kelly dejaba apuestas de $70 que no aportan nada. Ahora no se apuesta si la ventaja "
                               "estimada es menor a 0.5%, y el modo objetivo sigue cuidando el riesgo total.")
         guardar_estado(con, "medio_kelly", True)
+    # "México real" apuesta en todas las casas mexicanas configuradas (incluidos sus momios mejorados)
+    fila = con.execute("SELECT parametros FROM estrategias WHERE rol = 'mexico'").fetchone()
+    if fila:
+        p, casas = json.loads(fila[0]), [c["clave"] for c in config["casas_mexico"]]
+        if p.get("casas_permitidas") != casas:
+            con.execute("UPDATE estrategias SET parametros = ? WHERE rol = 'mexico'",
+                        (json.dumps({**p, "casas_permitidas": casas}),))
     con.commit()
 
 
@@ -366,7 +373,7 @@ def procesar_externos(con, config: dict, activos: dict, restantes: int) -> int:
                                    f"con los partidos que sigue el bot ({usados} créditos usados).")
             continue
         con.executemany("INSERT OR REPLACE INTO enlaces (evento_id, casa, url) VALUES (?, ?, ?)",
-                        [(e, casa["clave"], v["url"]) for e, v in mapa.items() if v.get("url")])
+                        [(e, casa.get("base", casa["clave"]), v["url"]) for e, v in mapa.items() if v.get("url")])
         colocadas, resumen = estrategias.apostar_externo(con, config, mapa, datos["capturado"],
                                                          f"Momio de {nombre} (lectura manual)")
         m = resumen["mejor"]
@@ -433,6 +440,12 @@ def exportar(con, config: dict, carpeta: Path) -> None:
     (carpeta / "analisis.json").write_text(json.dumps(tablero.analisis_apuestas(con, config), ensure_ascii=False),
                                            encoding="utf-8")
     (carpeta / "index.html").write_text(pagina.replace("__VERSION__", version), encoding="utf-8")
+    # Partidos que sigue el bot en las próximas 50 h: el barrido de casas mexicanas solo devuelve esos (menos tokens)
+    limite = iso(ahora() + timedelta(hours=50))
+    partidos = [[r["deporte"], r["local"], r["visitante"], r["inicio"][:16]] for r in con.execute(
+        "SELECT deporte, local, visitante, inicio FROM eventos WHERE inicio > ? AND inicio <= ? ORDER BY inicio",
+        (iso(ahora()), limite))]
+    (carpeta / "partidos.json").write_text(json.dumps(partidos, ensure_ascii=False), encoding="utf-8")
 
 
 def bucle_motor() -> None:

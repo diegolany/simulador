@@ -225,7 +225,10 @@ def _monto(ctx: _Contexto, est: dict, fraccion: float, casa: str, deporte: str) 
         notas.append(f"freno por caída de {ctx.caida(est['nombre']):.0%} de la banca: monto al {r['factor_freno']:.0%}")
     monto = fraccion * actual
     limite = e["limite_apuesta"] if deporte in e["ligas_mayores"] else e["limite_apuesta_liga_menor"]
-    if casa in ctx.limitadas:
+    if casa.endswith("_mejorado"):  # los momios mejorados tienen monto máximo bajo
+        limite = min(limite, e["limite_momio_mejorado"])
+        notas.append(f"momio mejorado: la casa acepta máximo ${limite:,.0f}")
+    elif casa in ctx.limitadas:
         limite = min(limite, e["limite_cuenta_limitada"])
         notas.append(f"{casa} ya te habría limitado: acepta máximo ${limite:,.0f}")
     elif monto > limite:

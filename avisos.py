@@ -290,10 +290,12 @@ def _precios_mexico(con, config) -> dict:
     return precios
 
 
-def _recomendar(a, cuentas, precios) -> tuple:
-    """La casa mexicana donde hacer la apuesta: la de la propia apuesta si es de México real; si no, la que pagó más
-    en el último barrido; sin lectura, la primera con cuenta (Caliente abre la app directo)."""
-    propia = next((c for c in cuentas if c["clave"] == a["casa"]), None)
+def _recomendar(a, cuentas, precios, config) -> tuple:
+    """La casa mexicana donde hacer la apuesta: la de la propia apuesta si es de México real (un momio mejorado es de
+    su casa base); si no, la que pagó más en el último barrido; sin lectura, la primera con cuenta (Caliente abre la
+    app directo)."""
+    base = next((c.get("base", c["clave"]) for c in config["casas_mexico"] if c["clave"] == a["casa"]), a["casa"])
+    propia = next((c for c in cuentas if c["clave"] == base), None)
     if propia:
         return propia, a["momio_visto"] or a["momio"]
     leidas = [(precios.get(a["evento_id"], {}).get(c["clave"], {}).get(a["seleccion"]), c) for c in cuentas]
@@ -329,7 +331,7 @@ def enviar_nuevas(con, config: dict) -> None:
             continue
         if enviados >= MAX_POR_CICLO:
             break
-        casa, momio_casa = _recomendar(a, cuentas, precios)
+        casa, momio_casa = _recomendar(a, cuentas, precios, config)
         monto = monto_real(a, config)
         if casa and disponible.get(casa["clave"], 0) < monto:  # sin saldo: la otra casa si tiene
             otra = next((c for c in cuentas if disponible.get(c["clave"], 0) >= monto), None)

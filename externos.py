@@ -40,8 +40,10 @@ def emparejar(con, datos: dict) -> dict:
             "momios": p["momios"], "url": p.get("url")})
     mapa = {}
     for deporte, candidatos in por_deporte.items():
-        for ev in con.execute("SELECT id, local, visitante, inicio FROM eventos WHERE deporte = ? AND inicio > ?",
-                              (deporte, iso(ahora()))).fetchall():
+        # "soccer" o "basketball" (sección general del deporte) busca en todas sus ligas
+        filtro = "deporte = ?" if "_" in deporte else "deporte LIKE ?"
+        for ev in con.execute(f"SELECT id, local, visitante, inicio, deporte FROM eventos WHERE {filtro} AND inicio > ?",
+                              (deporte if "_" in deporte else deporte + "%", iso(ahora()))).fetchall():
             # Caliente pone primero al visitante en deportes de EE. UU.: el emparejador acepta el orden invertido
             partido, invertido = marcadores.emparejar(ev["local"], ev["visitante"], a_fecha(ev["inicio"]), candidatos, 6)
             if not partido:
@@ -54,7 +56,7 @@ def emparejar(con, datos: dict) -> dict:
             if momios.get("Empate"):
                 precios["Draw"] = momios["Empate"]
             if all(v and v > 1 for v in precios.values()):
-                mapa[ev["id"]] = {"casa": datos.get("casa", "caliente"), "precios": precios, "deporte": deporte,
+                mapa[ev["id"]] = {"casa": datos.get("casa", "caliente"), "precios": precios, "deporte": ev["deporte"],
                                   "url": partido.get("url")}
     return mapa
 

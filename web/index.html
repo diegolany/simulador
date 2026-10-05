@@ -1173,7 +1173,8 @@ const SIGLAS = new Set(['fc', 'cf', 'sc', 'ac', 'cd', 'sd', 'ad', 'ud', 'ca', 'c
 const nombreBusqueda = n => String(n || '').split(/\s+/).filter(p => !SIGLAS.has(p.toLowerCase().replace(/\./g, ''))).join(' ') || n;
 
 const ORIGENES = [['creditos', '💳 Créditos'], ['draftkings', '🆓 DraftKings'], ['caliente', '🇲🇽 Caliente'], ['codere_mx', '🇲🇽 Codere']];
-const MEXICANAS = { caliente: 'Caliente', codere_mx: 'Codere', strendus: 'Strendus', betano_mx: 'Betano', playdoit: 'Playdoit', draftea: 'Draftea' };
+const MEXICANAS = { caliente: 'Caliente', codere_mx: 'Codere', strendus: 'Strendus', betano_mx: 'Betano', playdoit: 'Playdoit', draftea: 'Draftea',
+  caliente_mejorado: 'Caliente (mejorado)', codere_mx_mejorado: 'Codere (mejorado)' };
 const origen = f => MEXICANAS[f] ? `<span class="chip malo" title="Momio de ${MEXICANAS[f]} leído a mano en el navegador">🇲🇽 ${MEXICANAS[f]}</span>`
   : f === 'draftkings' ? '<span class="chip bueno" title="Momio gratuito de DraftKings (ESPN)">🆓 DraftKings</span>'
   : '<span class="chip azul" title="Momio de una descarga pagada con créditos">💳 Créditos</span>';

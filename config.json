@@ -46,6 +46,10 @@
                   "baseball": "/es_MX/beisbol", "icehockey": "/es_MX/s/ICEH/Hockey-sobre-Hielo"},
      "ligas": {"icehockey_nhl": "/es_MX/t/19283/NHL", "soccer_mexico_ligamx": "/es_MX/t/45349/Liga-MX"},
      "bono": "Anuncia bono de bienvenida hasta $7,000 (falta revisar términos)"},
+    {"clave": "caliente_mejorado", "nombre": "Caliente (momios mejorados)", "base": "caliente", "url": "https://sports.caliente.mx/es_MX",
+     "lectura": true, "cuenta": false, "bono": "Momios mejorados del resultado final (monto máximo bajo)"},
+    {"clave": "codere_mx_mejorado", "nombre": "Codere (momios mejorados)", "base": "codere_mx", "url": "https://apuestas.codere.mx/es_MX",
+     "lectura": true, "cuenta": false, "bono": "Momios mejorados del resultado final (monto máximo bajo)"},
     {"clave": "strendus", "nombre": "Strendus", "url": "https://www.strendus.com.mx/sports", "lectura": false, "cuenta": false,
      "bono": "Por revisar"},
     {"clave": "betano_mx", "nombre": "Betano", "url": "https://www.betano.mx", "lectura": false, "cuenta": false,
@@ -81,6 +85,7 @@
     "limite_apuesta": 20000,
     "limite_apuesta_liga_menor": 5000,
     "limite_cuenta_limitada": 300,
+    "limite_momio_mejorado": 500,
     "ligas_mayores": [
       "soccer_epl", "soccer_spain_la_liga", "soccer_germany_bundesliga", "soccer_italy_serie_a",
       "soccer_france_ligue_one", "soccer_uefa_champs_league", "soccer_uefa_europa_league", "soccer_mexico_ligamx",
