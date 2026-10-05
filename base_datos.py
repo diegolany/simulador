@@ -159,6 +159,19 @@ CREATE TABLE IF NOT EXISTS estado (
     clave TEXT PRIMARY KEY,
     valor TEXT
 );
+
+-- Avisos de Telegram: qué apuesta se le mandó a Diego y qué contestó (la bitácora de lo que se haría en la vida real)
+CREATE TABLE IF NOT EXISTS avisos (
+    apuesta_id INTEGER PRIMARY KEY REFERENCES apuestas(id),
+    mensaje_id INTEGER,
+    texto TEXT,
+    enviado TEXT NOT NULL,
+    respuesta TEXT,                 -- hecha, no_habia, paso
+    respondido TEXT,
+    momio_real REAL,                -- momio que le dieron (vacío = el sugerido)
+    monto_real REAL,                -- monto sugerido con la banca real
+    resultado_avisado INTEGER NOT NULL DEFAULT 0
+);
 """
 
 

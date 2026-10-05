@@ -20,6 +20,7 @@ from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 import aprendizaje
+import avisos
 import diario
 import estrategias
 import estudio
@@ -323,6 +324,7 @@ def ciclo(con, config: dict, forzar_barrido: bool = False) -> None:
         podar(con, config["casa_referencia"])
 
     _seguro("Diario", diario.actualizar, con, config)
+    _seguro("Telegram", avisos.ciclo, con, config)
     guardar_estado(con, "restantes", restantes)
     guardar_estado(con, "ultimo_ciclo", iso(ahora()))
     con.commit()
@@ -410,6 +412,7 @@ def analizar_sin_gastar(con, config: dict) -> None:
     _seguro("Resultados de pronósticos", marcadores.resolver_pronosticos, con)
     _seguro("Alertas de riesgo", riesgo.alertas, con, config)
     _seguro("Diario", diario.actualizar, con, config)
+    _seguro("Telegram", avisos.ciclo, con, config)
     guardar_estado(con, "ultimo_ciclo", iso(ahora()))
     con.commit()
 
