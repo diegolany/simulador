@@ -1,0 +1,110 @@
+{
+ "casa": "codere_mx",
+ "capturado": "2026-10-05T03:21:48+00:00",
+ "partidos": [
+  {
+   "deporte": "americanfootball",
+   "inicio": "2026-10-06T00:15:00+00:00",
+   "equipos": [
+    "NO Saints",
+    "ATL Falcons"
+   ],
+   "momios": {
+    "NO Saints": 1.75,
+    "ATL Falcons": 2.05
+   },
+   "url": "https://apuestas.codere.mx/es_MX/e/13944113/NO-Saints-v-ATL-Falcons"
+  },
+  {
+   "deporte": "icehockey_nhl",
+   "inicio": "2026-10-05T23:30:00+00:00",
+   "equipos": [
+    "BOS Bruins",
+    "OTT Senators"
+   ],
+   "momios": {
+    "BOS Bruins": 1.95,
+    "OTT Senators": 1.88
+   },
+   "url": "https://apuestas.codere.mx/es_MX/e/14032522/BOS-Bruins-v-OTT-Senators"
+  },
+  {
+   "deporte": "icehockey_nhl",
+   "inicio": "2026-10-06T00:00:00+00:00",
+   "equipos": [
+    "DAL Stars",
+    "SJ Sharks"
+   ],
+   "momios": {
+    "DAL Stars": 1.62,
+    "SJ Sharks": 2.35
+   },
+   "url": "https://apuestas.codere.mx/es_MX/e/14032582/DAL-Stars-v-SJ-Sharks"
+  },
+  {
+   "deporte": "icehockey_nhl",
+   "inicio": "2026-10-05T23:00:00+00:00",
+   "equipos": [
+    "TB Lightning",
+    "PHI Flyers"
+   ],
+   "momios": {
+    "TB Lightning": 1.5,
+    "PHI Flyers": 2.6
+   },
+   "url": "https://apuestas.codere.mx/es_MX/e/14032586/TB-Lightning-v-PHI-Flyers"
+  },
+  {
+   "deporte": "icehockey_nhl",
+   "inicio": "2026-10-05T23:30:00+00:00",
+   "equipos": [
+    "PIT Penguins",
+    "WIN Jets"
+   ],
+   "momios": {
+    "PIT Penguins": 1.6,
+    "WIN Jets": 2.4
+   },
+   "url": "https://apuestas.codere.mx/es_MX/e/14032587/PIT-Penguins-v-WIN-Jets"
+  },
+  {
+   "deporte": "icehockey_nhl",
+   "inicio": "2026-10-06T23:00:00+00:00",
+   "equipos": [
+    "MON Canadiens",
+    "CAR Hurricanes"
+   ],
+   "momios": {
+    "MON Canadiens": 1.95,
+    "CAR Hurricanes": 1.88
+   },
+   "url": "https://apuestas.codere.mx/es_MX/e/14041991/MON-Canadiens-v-CAR-Hurricanes"
+  },
+  {
+   "deporte": "icehockey_nhl",
+   "inicio": "2026-10-07T00:00:00+00:00",
+   "equipos": [
+    "CH Blackhawks",
+    "STL Blues"
+   ],
+   "momios": {
+    "CH Blackhawks": 1.95,
+    "STL Blues": 1.85
+   },
+   "url": "https://apuestas.codere.mx/es_MX/e/14041993/CH-Blackhawks-v-STL-Blues"
+  },
+  {
+   "deporte": "icehockey_nhl",
+   "inicio": "2026-10-07T02:00:00+00:00",
+   "equipos": [
+    "LA Kings",
+    "FLO Panthers"
+   ],
+   "momios": {
+    "LA Kings": 2,
+    "FLO Panthers": 1.8
+   },
+   "url": "https://apuestas.codere.mx/es_MX/e/14050546/LA-Kings-v-FLO-Panthers"
+  }
+ ]
+}
