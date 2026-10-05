@@ -80,6 +80,27 @@ def icono(deporte: str) -> str:
     return ICONOS.get(deporte.split("_")[0], "🏟️")
 
 
+def leer_respuesta(texto: str, casas: list) -> tuple:
+    """'50 +460 codere', '$100 a 1.95', '-105' → (monto, momio decimal, clave de la casa); lo que no venga, None.
+    El momio lleva signo (americano) o punto decimal; un número sin signo ni punto es el monto."""
+    t = texto.lower().replace("−", "-")
+    casa = next((c["clave"] for c in casas if c["nombre"].lower() in t or c["clave"] in t), None)
+    monto = momio = None
+    m = re.search(r"\$\s*(\d{1,3}(?:,\d{3})+|\d+)(?:\.\d+)?", t)
+    if m:
+        monto = float(m.group(1).replace(",", ""))
+        t = t[:m.start()] + " " + t[m.end():]
+    for signo, numero in re.findall(r"(?<![\w.,])([+-]?)(\d+(?:[.,]\d+)?)(?![\w.,])", t):
+        n = float(numero.replace(",", "."))
+        if signo and n >= 100 and momio is None:
+            momio = round(1 + n / 100, 3) if signo == "+" else round(1 + 100 / n, 3)
+        elif not signo and ("." in numero or "," in numero) and 1.01 <= n <= 50 and momio is None:
+            momio = n
+        elif not signo and numero.isdigit() and monto is None:
+            monto = n
+    return monto, momio, casa
+
+
 def _seleccion(s: str) -> str:
     return "Empate" if s.lower() in ("draw", "empate", "x") else s
 
@@ -105,6 +126,7 @@ def _texto(a, config) -> tuple[str, float, float]:
         f"✅ Hazla solo si te pagan <b>{minimo:.2f} ({americano(minimo)}) o más</b>",
         f"💵 Monto (banca de ${t['banca_real']:,.0f}): <b>${monto:,.0f}</b>",
         f"⏳ Vale hasta las {vence:%H:%M}",
+        "✍️ Si la hiciste, respóndeme este mensaje con monto, momio y casa (ej. <code>50 +460 codere</code>)",
     ]
     if a["rol"] == "mexico":
         lineas.insert(1, "🇲🇽 Momio de casa mexicana")
@@ -121,8 +143,8 @@ def _conectar(con, mensaje) -> None:
                  "1. Ábrela en Caliente o Codere y revisa el momio.\n"
                  "2. Si paga lo mínimo o más, hazla con el monto sugerido.\n"
                  "3. Pícale la casa donde la hiciste, ❌ No estaba o ⏭️ Paso.\n\n"
-                 "Si te dieron otro momio (o el que había cuando no estaba), respóndeme el mensaje de la apuesta con el "
-                 "número (ej. 1.95 o -105).\nLos botones se registran en el siguiente ciclo (5 a 15 min).\n"
+                 "Para anotar lo que apostaste, respóndeme el mensaje de la apuesta con monto, momio y casa "
+                 "(ej. 50 +460 codere).\nLos botones se registran en el siguiente ciclo (5 a 15 min).\n"
                  "Escribe /resumen para ver las estadísticas.")
 
 
@@ -157,17 +179,25 @@ def _mensaje(con, config, mensaje) -> None:
     original = (mensaje.get("reply_to_message") or {}).get("message_id")
     aviso = original and con.execute("SELECT apuesta_id, respuesta FROM avisos WHERE mensaje_id = ?",
                                      (original,)).fetchone()
-    momio = leer_momio(texto)
-    if aviso and momio:
-        momento = iso(datetime.fromtimestamp(mensaje["date"], timezone.utc) if mensaje.get("date") else ahora())
-        no_habia = aviso["respuesta"] == "no_habia"
-        con.execute("UPDATE avisos SET momio_real = ?, respuesta = COALESCE(respuesta, 'hecha'), "
-                    "respondido = COALESCE(respondido, ?) WHERE apuesta_id = ?", (momio, momento, aviso["apuesta_id"]))
-        _enviar(con, f"📝 Anotado: {'había' if no_habia else 'la hiciste a'} {momio:.2f} ({americano(momio)}).",
+    monto, momio, casa = leer_respuesta(texto, config["casas_mexico"])
+    nombre = next((c["nombre"] for c in config["casas_mexico"] if c["clave"] == casa), None)
+    partes = ([f"${monto:,.0f}"] if monto else []) + ([f"a {momio:.2f} ({americano(momio)})"] if momio else []) \
+        + ([f"en {nombre}"] if nombre else [])
+    simulacro = original and "SIMULACRO" in (mensaje["reply_to_message"].get("text") or "")
+    if original and simulacro and partes:
+        _enviar(con, f"🔧 Simulacro: anotaría {' '.join(partes)}. Funcionó; no cuenta en las estadísticas.",
                 responder_a=original)
+    elif aviso and partes:
+        momento = iso(datetime.fromtimestamp(mensaje["date"], timezone.utc) if mensaje.get("date") else ahora())
+        solo_vio = aviso["respuesta"] == "no_habia" and not monto  # anota el momio que había, no una apuesta
+        con.execute("UPDATE avisos SET momio_real = COALESCE(?, momio_real), monto_real = COALESCE(?, monto_real), "
+                    "casa_real = COALESCE(?, casa_real), respuesta = ?, respondido = COALESCE(respondido, ?) "
+                    "WHERE apuesta_id = ?", (momio, monto, casa, "no_habia" if solo_vio else "hecha", momento,
+                                             aviso["apuesta_id"]))
+        _enviar(con, f"📝 Anotado: {'había' if solo_vio else 'apostaste'} {' '.join(partes)}.", responder_a=original)
     else:
-        _enviar(con, "Te escribo solo cuando hay apuesta. Para corregir un momio, responde al mensaje de esa apuesta "
-                     "con el número (ej. 1.95 o -105). Escribe /resumen para ver las estadísticas.")
+        _enviar(con, "Te escribo solo cuando hay apuesta. Para anotar lo que apostaste, responde al mensaje de esa "
+                     "apuesta con monto, momio y casa (ej. 50 +460 codere). Escribe /resumen para ver las estadísticas.")
 
 
 def _simulacro(con, config, consulta, partes, previo) -> None:
@@ -208,7 +238,8 @@ def _boton(con, config, consulta, previo) -> None:
     con.execute("UPDATE avisos SET respuesta = ?, respondido = ?, casa_real = ? WHERE apuesta_id = ?",
                 (respuesta, momento, casa, ident))
     _llamar("answerCallbackQuery", {"callback_query_id": consulta["id"], "text": etiqueta})
-    extra = "\n<i>Si te dieron otro momio, respóndeme este mensaje con el número.</i>" if respuesta == "hecha" else (
+    extra = ("\n<i>Si apostaste otro monto o te dieron otro momio, respóndeme este mensaje (ej. 100 +450).</i>"
+             if respuesta == "hecha" else
         "\n<i>Si quieres, respóndeme este mensaje con el momio que había.</i>" if respuesta == "no_habia" else "")
     _llamar("editMessageText", {"chat_id": leer_estado(con, "telegram_chat"), "message_id": fila["mensaje_id"],
                                 "text": f"{fila['texto']}\n\n<b>{etiqueta}</b>{extra}", "parse_mode": "HTML",
