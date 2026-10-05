@@ -15,7 +15,11 @@
     const anio = hoy.getUTCFullYear() + (mes < hoy.getUTCMonth() - 6 ? 1 : 0);
     return new Date(Date.UTC(anio, mes, +d, hh + 6, mm)).toISOString();
   };
-  const decimal = b => parseFloat(b?.querySelector('.price.dec')?.textContent);
+  // La fracción es exacta; el decimal de la página viene redondeado (−197 se muestra como 1.51)
+  const decimal = b => {
+    const f = b?.querySelector('.price.frac')?.textContent.match(/(\d+)\/(\d+)/);
+    return f ? Math.round((1 + f[1] / f[2]) * 10000) / 10000 : parseFloat(b?.querySelector('.price.dec')?.textContent);
+  };
   const idEvento = b => (b?.className.match(/ev-(\d+)/) || [])[1];
   const enVivo = b => b.classList.contains('inplay') || b.disabled;
   const hora = tr => {
