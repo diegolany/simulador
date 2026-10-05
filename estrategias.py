@@ -65,6 +65,11 @@ ESTRATEGIAS_INICIALES = [
     ("Sin cerebro", "valor", "retadora",
      "Reglas de la Principal con el monto según el valor a simple vista, sin el cerebro: mide si el cerebro ayuda",
      {"umbral": 0.015, "cerebro": False}),
+    # Lo más parecido a la vida real: las reglas de la Principal, pero solo en casas con licencia en México donde
+    # Diego puede abrir cuenta (sus momios llegan por los barridos manuales). Es la cartera que pasaría a dinero real.
+    ("México real", "valor", "mexico",
+     "Reglas de la Principal solo en casas mexicanas con licencia (Caliente, Codere): lo que se podría apostar de verdad",
+     {"umbral": 0.015, "casas_permitidas": ["caliente", "codere_mx", "strendus", "betano_mx"]}),
     # Experimentos con momios gratuitos de DraftKings: apuestan aunque la diferencia con el precio justo sea
     # mínima, con monto fijo pequeño, para aprender rápido qué forma de apostar ahí deja dinero.
     # Solo informan: nunca cambian las reglas de la Principal.
@@ -273,11 +278,14 @@ def _anotar_senales(con, config: dict, ev, precios: list, justas: dict, margen: 
     """Apuestas fantasma: guarda cada precio (casa, selección, momio ya con deslizamiento) con valor de al menos −2%
     para medir después su CLV. El mismo precio visto otra vez no se repite."""
     f = config["fantasmas"]
+    mexicanas = {c["clave"] for c in config["casas_mexico"]}
     for casa, sel, momio in precios:
         if sel not in justas:
             continue
         v = valor_esperado(justas[sel], momio)
-        if f["valor_minimo"] <= v <= config["valor_sospechoso"] and momio <= f["momio_maximo"]:
+        # De las casas mexicanas se guarda todo (cobran más comisión): así se mide si alguna le gana al mercado
+        minimo = -0.10 if casa in mexicanas else f["valor_minimo"]
+        if minimo <= v <= config["valor_sospechoso"] and momio <= f["momio_maximo"]:
             con.execute("""INSERT OR IGNORE INTO senales (evento_id, deporte, liga, casa, seleccion, momio, prob_justa,
                                                           valor, margen_ref, capturado, inicio)
                            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
@@ -366,7 +374,8 @@ def colocar_apuestas(con, config: dict, capturado: str) -> tuple[dict, int]:
                 for o in ofertas:
                     v = valor_esperado(probs[o["sel"]], o["momio"])
                     if (o["casa"] in p["casas_bloqueadas"] or not p["momio_min"] <= o["momio"] <= p["momio_max"]
-                            or not umbral <= v <= config["valor_sospechoso"]):
+                            or not umbral <= v <= config["valor_sospechoso"]
+                            or (p.get("casas_permitidas") and o["casa"] not in p["casas_permitidas"])):
                         continue
                     estimada, aj = v, []
                     if p["cerebro"]:
@@ -547,6 +556,8 @@ def _apostar_con_precios(con, config: dict, obtener_precio, minutos: float, nota
             p = est["p"]
             if ev["liga"] in p["ligas_bloqueadas"] or casa in p["casas_bloqueadas"] or not p["horas_min"] <= horas <= p["horas_max"]:
                 continue
+            if p.get("casas_permitidas") and casa not in p["casas_permitidas"]:
+                continue  # la cartera México solo apuesta en casas mexicanas
             probs, nombre_ref = justas, "Pinnacle"
             if est["tipo"] == "valor" and p["referencia"] == "consenso":
                 if consenso is None:  # intercambios de la misma descarga de Pinnacle

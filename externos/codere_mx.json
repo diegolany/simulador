@@ -1,0 +1,216 @@
+{
+ "casa": "codere_mx",
+ "capturado": "2026-10-05T00:08:00+00:00",
+ "partidos": [
+  {
+   "deporte": "americanfootball_nfl",
+   "inicio": "2026-10-06T00:15:00+00:00",
+   "equipos": [
+    "NO Saints",
+    "ATL Falcons"
+   ],
+   "momios": {
+    "NO Saints": 1.75,
+    "ATL Falcons": 2.05
+   }
+  },
+  {
+   "deporte": "soccer_argentina_primera_division",
+   "inicio": "2026-10-06T00:15:00+00:00",
+   "equipos": [
+    "Banfield",
+    "Rosario Central"
+   ],
+   "momios": {
+    "Banfield": 3.9,
+    "Rosario Central": 1.9,
+    "Empate": 3.35
+   }
+  },
+  {
+   "deporte": "soccer_argentina_primera_division",
+   "inicio": "2026-10-05T00:30:00+00:00",
+   "equipos": [
+    "Estudiantes Río Cuarto",
+    "Racing Club"
+   ],
+   "momios": {
+    "Estudiantes Río Cuarto": 3.8,
+    "Racing Club": 2,
+    "Empate": 3.15
+   }
+  },
+  {
+   "deporte": "soccer_argentina_primera_division",
+   "inicio": "2026-10-05T22:00:00+00:00",
+   "equipos": [
+    "Estudiantes de La Plata",
+    "Gimnasia y Esgrima de Mendoza"
+   ],
+   "momios": {
+    "Estudiantes de La Plata": 1.7,
+    "Gimnasia y Esgrima de Mendoza": 5,
+    "Empate": 3.45
+   }
+  },
+  {
+   "deporte": "soccer_argentina_primera_division",
+   "inicio": "2026-10-05T19:45:00+00:00",
+   "equipos": [
+    "Deportivo Riestra",
+    "Central Córdoba"
+   ],
+   "momios": {
+    "Deportivo Riestra": 1.91,
+    "Central Córdoba": 4.25,
+    "Empate": 3.1
+   }
+  },
+  {
+   "deporte": "soccer_argentina_primera_division",
+   "inicio": "2026-10-05T22:00:00+00:00",
+   "equipos": [
+    "Vélez Sársfield",
+    "Platense"
+   ],
+   "momios": {
+    "Vélez Sársfield": 1.91,
+    "Platense": 4.4,
+    "Empate": 3.05
+   }
+  },
+  {
+   "deporte": "soccer_spain_segunda_division",
+   "inicio": "2026-10-05T18:30:00+00:00",
+   "equipos": [
+    "Córdoba CF",
+    "Tenerife"
+   ],
+   "momios": {
+    "Córdoba CF": 1.95,
+    "Tenerife": 3.7,
+    "Empate": 3.5
+   }
+  },
+  {
+   "deporte": "icehockey_nhl",
+   "inicio": "2026-10-05T00:00:00+00:00",
+   "equipos": [
+    "ANA Ducks",
+    "FLO Panthers"
+   ],
+   "momios": {
+    "ANA Ducks": 2.05,
+    "FLO Panthers": 1.7
+   }
+  },
+  {
+   "deporte": "icehockey_nhl",
+   "inicio": "2026-10-05T00:00:00+00:00",
+   "equipos": [
+    "SEA Kraken",
+    "CAL Flames"
+   ],
+   "momios": {
+    "SEA Kraken": 1.55,
+    "CAL Flames": 2.3
+   }
+  },
+  {
+   "deporte": "icehockey_nhl",
+   "inicio": "2026-10-05T01:00:00+00:00",
+   "equipos": [
+    "VAN Canucks",
+    "VG Knights"
+   ],
+   "momios": {
+    "VAN Canucks": 3.35,
+    "VG Knights": 1.33
+   }
+  },
+  {
+   "deporte": "icehockey_nhl",
+   "inicio": "2026-10-05T23:30:00+00:00",
+   "equipos": [
+    "BOS Bruins",
+    "OTT Senators"
+   ],
+   "momios": {
+    "BOS Bruins": 1.95,
+    "OTT Senators": 1.88
+   }
+  },
+  {
+   "deporte": "icehockey_nhl",
+   "inicio": "2026-10-06T00:00:00+00:00",
+   "equipos": [
+    "DAL Stars",
+    "SJ Sharks"
+   ],
+   "momios": {
+    "DAL Stars": 1.62,
+    "SJ Sharks": 2.35
+   }
+  },
+  {
+   "deporte": "icehockey_nhl",
+   "inicio": "2026-10-05T23:00:00+00:00",
+   "equipos": [
+    "TB Lightning",
+    "PHI Flyers"
+   ],
+   "momios": {
+    "TB Lightning": 1.5,
+    "PHI Flyers": 2.6
+   }
+  },
+  {
+   "deporte": "icehockey_nhl",
+   "inicio": "2026-10-05T23:30:00+00:00",
+   "equipos": [
+    "PIT Penguins",
+    "WIN Jets"
+   ],
+   "momios": {
+    "PIT Penguins": 1.57,
+    "WIN Jets": 2.4
+   }
+  },
+  {
+   "deporte": "icehockey_nhl",
+   "inicio": "2026-10-06T23:00:00+00:00",
+   "equipos": [
+    "MON Canadiens",
+    "CAR Hurricanes"
+   ],
+   "momios": {
+    "MON Canadiens": 1.95,
+    "CAR Hurricanes": 1.88
+   }
+  },
+  {
+   "deporte": "icehockey_nhl",
+   "inicio": "2026-10-07T00:00:00+00:00",
+   "equipos": [
+    "CH Blackhawks",
+    "STL Blues"
+   ],
+   "momios": {
+    "CH Blackhawks": 1.95,
+    "STL Blues": 1.85
+   }
+  },
+  {
+   "deporte": "icehockey_nhl",
+   "inicio": "2026-10-07T02:00:00+00:00",
+   "equipos": [
+    "LA Kings",
+    "FLO Panthers"
+   ],
+   "momios": {
+    "LA Kings": 2,
+    "FLO Panthers": 1.8
+   }
+  }
+ ]
+}

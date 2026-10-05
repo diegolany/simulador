@@ -86,7 +86,8 @@ def _seguro(funcion, *args):
         traceback.print_exc()
         return None
 
-ORIGENES_GRATIS = ("draftkings", "caliente")  # casas cuyos momios no cuestan créditos (ESPN y lectura manual)
+# Casas cuyos momios no cuestan créditos: DraftKings (ESPN) y las casas mexicanas que se leen a mano
+ORIGENES_GRATIS = ("draftkings", "caliente", "codere_mx", "strendus", "betano_mx")
 DEPORTES = {"soccer": "Fútbol", "basketball": "Básquetbol", "americanfootball": "Fútbol americano",
             "baseball": "Béisbol", "icehockey": "Hockey", "mma": "MMA", "boxing": "Box", "tennis": "Tenis"}
 
@@ -283,6 +284,21 @@ def historiales(con) -> dict:
     return por_estrategia
 
 
+def plan_real(con, config: dict) -> dict:
+    """Lo que hace falta para pasar a dinero real: cómo van las casas mexicanas (precios leídos, CLV de sus apuestas
+    fantasma, mejor valor visto) y la cartera "México real"."""
+    casas = []
+    for c in config["casas_mexico"]:
+        n, medidas, clv, gana, mejor, ultima = con.execute(
+            """SELECT COUNT(*), COUNT(clv), AVG(clv), AVG(CASE WHEN clv IS NOT NULL THEN clv > 0 END), MAX(valor),
+                      MAX(capturado) FROM senales WHERE casa = ?""", (c["clave"],)).fetchone()
+        con_valor = con.execute("SELECT COUNT(*), AVG(clv) FROM senales WHERE casa = ? AND valor >= 0.015 AND clv IS NOT NULL",
+                                (c["clave"],)).fetchone()
+        casas.append({**c, "precios": n, "medidos": medidas, "clv": clv, "gana_cierre": gana, "mejor_valor": mejor,
+                      "ultimo_barrido": ultima, "con_valor": con_valor[0], "clv_con_valor": con_valor[1]})
+    return {"casas": casas}
+
+
 def analisis_apuestas(con, config: dict) -> dict:
     """Análisis completo de cada apuesta de la Principal (lo que consideró al apostar, el resultado, el CLV y la suerte).
     Va en un archivo aparte que la página solo pide al abrir una apuesta en el diario."""
@@ -370,7 +386,7 @@ def estado(con, config: dict) -> dict:
     fantasmas = _seguro(senales_medidas, con) or []
     laboratorio = []
     for e in con.execute("SELECT * FROM estrategias ORDER BY CASE rol WHEN 'principal' THEN 0 "
-                         "WHEN 'retadora' THEN 1 WHEN 'experimento' THEN 2 WHEN 'control' THEN 3 ELSE 4 END, creada"):
+                         "WHEN 'mexico' THEN 1 WHEN 'retadora' THEN 2 WHEN 'experimento' THEN 3 WHEN 'control' THEN 4 ELSE 5 END, creada"):
         propias = [a for a in todas if a["estrategia"] == e["nombre"]]
         r = _resumen(propias)
         por_origen = {o: _resumen([a for a in propias if _origen(a) == o]) for o in ("creditos", *ORIGENES_GRATIS)}
@@ -416,6 +432,7 @@ def estado(con, config: dict) -> dict:
         "calibracion_partidos": partidos_calibrados,
         "calidad_pronosticos": _seguro(calidad_pronosticos, con),
         "fantasmas": _seguro(resumen_fantasmas, con, config),
+        "plan": _seguro(plan_real, con, config),
         "riesgo": _seguro(riesgo.panel, con, config),
         "cerebro": _seguro(lambda: cerebro.obtener(con, config).resumen()),
         "config_riesgo": {**config["riesgo"], "deslizamiento_base": config["ejecucion"]["deslizamiento_base"]},

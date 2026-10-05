@@ -241,6 +241,7 @@ footer { margin-top: 28px; color: var(--tenue); font-size: 12.5px; line-height: 
     <button data-pestana="apuestas">Apuestas<span class="conteo" id="conteo-activas"></span></button>
     <button data-pestana="riesgo">Riesgo</button>
     <button data-pestana="laboratorio">Laboratorio</button>
+    <button data-pestana="plan">Plan real</button>
     <button data-pestana="diario">Diario</button>
     <button data-pestana="bitacora">Bitácora</button>
   </nav>
@@ -313,6 +314,7 @@ footer { margin-top: 28px; color: var(--tenue); font-size: 12.5px; line-height: 
       <button data-origen="creditos">💳 Créditos</button>
       <button data-origen="draftkings">🆓 DraftKings</button>
       <button data-origen="caliente">🇲🇽 Caliente</button>
+      <button data-origen="codere_mx">🇲🇽 Codere</button>
       <span class="chica" id="reparto-origen" style="align-self:center"></span>
     </div>
     <div class="boletos" id="activas"></div>
@@ -402,6 +404,43 @@ footer { margin-top: 28px; color: var(--tenue); font-size: 12.5px; line-height: 
     <div class="tarjeta">
       <p class="ayuda">Si estimamos 40% y ganamos cerca de 40% de esas apuestas, el cálculo está bien calibrado. Necesita cientos de apuestas.</p>
       <div class="tabla" id="calibracion"></div>
+    </div>
+  </section>
+
+  <section data-panel="plan" hidden>
+    <div class="tarjeta">
+      <p class="ayuda" style="margin:0"><b>Meta:</b> pasar a apuestas reales en casas con licencia en México. El bot encuentra la apuesta y te
+        avisa por Telegram con el momio mínimo y el monto; tú la haces en la app de la casa y respondes "la hice" o "no". El simulador sigue
+        corriendo a la par para comparar lo simulado contra lo real. Solo se avanza de fase cuando los datos lo confirman.</p>
+    </div>
+    <h3 class="seccion">Fases</h3>
+    <div class="pila" id="plan-fases"></div>
+    <h3 class="seccion">Casas mexicanas: ¿cuáles le ganan al mercado?</h3>
+    <div class="tarjeta">
+      <p class="ayuda">Cada barrido lee los momios de estas casas (sin iniciar sesión) y los compara contra el precio justo de Pinnacle. Cada precio queda
+        como apuesta fantasma y al empezar el partido se mide si le ganó al cierre. Una casa sirve para dinero real cuando sus precios con valor
+        (1.5% o más) le ganan al cierre de forma constante. Para hacer un barrido dile a Claude: <b>"barrido México"</b>.</p>
+      <div class="tabla" id="plan-casas"></div>
+    </div>
+    <h3 class="seccion">Bonos de bienvenida: cuándo convienen</h3>
+    <div class="tarjeta">
+      <p style="margin:0 0 6px">Un bono vale la pena si lo que cuesta liberarlo es menor que el bono. Antes de aceptarlo hay que leer: cuántas veces hay
+        que apostarlo (rollover), momio mínimo, plazo, qué apuestas cuentan y si hay tope de retiro.</p>
+      <p style="margin:0 0 6px"><b>Cuenta rápida:</b> costo de liberarlo ≈ total que hay que apostar × comisión de la casa (~5%). Ejemplo: bono de $1,000
+        con rollover 5× → hay que apostar $5,000 → cuesta ~$250 → <b>ganancia esperada ~$750</b>. Si para liberarlo se usan las apuestas de valor del bot,
+        el costo baja todavía más.</p>
+      <p class="chica" style="margin:0">Regla: no depositar más de lo que se puede perder, y no aceptar bonos con rollover alto o plazos cortos que obliguen a
+        apostar sin valor. Las casas revisan a quien solo busca bonos: se usan una vez y con apuestas normales.</p>
+    </div>
+    <h3 class="seccion">Tus pendientes</h3>
+    <div class="tarjeta">
+      <ol style="margin:0;padding-left:20px;line-height:1.8">
+        <li>Confirmar que cada casa tenga permiso de SEGOB (juegosysorteos.segob.gob.mx).</li>
+        <li>Abrir las cuentas tú mismo y verificar identidad (INE, comprobante). Claude no abre cuentas ni maneja contraseñas.</li>
+        <li>Leer los términos del bono de cada casa (rollover, momio mínimo, plazo, retiro máximo) y pasárselos a Claude para calcular si conviene.</li>
+        <li>Para la fase 2: crear un bot de Telegram con @BotFather y guardar su token como secreto en GitHub (Claude te guía).</li>
+        <li>Revisar el tema de impuestos: las casas en México retienen ISR sobre los premios.</li>
+      </ol>
     </div>
   </section>
 
@@ -939,7 +978,7 @@ function historial(d) {
 }
 
 function laboratorio(d) {
-  const roles = { principal: 'Principal', retadora: 'Retadora', experimento: '🆓 Experimento DK', control: 'Control', retirada: 'Retirada' };
+  const roles = { principal: 'Principal', mexico: '🇲🇽 Cartera México', retadora: 'Retadora', experimento: '🆓 Experimento DK', control: 'Control', retirada: 'Retirada' };
   // Orden por la ventaja real estimada (CLV ya corregido por suerte); sin medidas, al final
   const ventaja = e => e.confianza?.ventaja ?? (e.clv == null ? -9 : e.clv);
   const orden = [...d.laboratorio].sort((a, b) => ventaja(b) - ventaja(a) || (b.ganancia - a.ganancia));
@@ -991,6 +1030,51 @@ function laboratorio(d) {
   fantasmasVista(d);
 }
 
+function planVista(d) {
+  const p = d.plan, conf = d.riesgo?.confianza || {};
+  if (!p) { $('#plan-fases').innerHTML = '<div class="vacio">Aparece en la siguiente vuelta del bot.</div>'; return; }
+  const mx = (d.laboratorio || []).find(e => e.rol === 'mexico') || {};
+  const casaLista = p.casas.find(c => c.con_valor >= 100 && c.clv_con_valor > 0);
+  const req = (cumple, texto, detalle) => `<li style="margin:4px 0">${cumple ? '✅' : '⬜'} ${texto} <span class="chica">— ${detalle}</span></li>`;
+  const fase = (num, titulo, cuando, estado, requisitos, nota) => `<div class="tarjeta">
+      <div class="fila" style="display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap"><b>Fase ${num}: ${titulo}</b>
+        <span class="chip ${estado === 'En curso' ? 'azul' : ''}">${estado} · ${cuando}</span></div>
+      ${nota ? `<p class="chica" style="margin:6px 0">${nota}</p>` : ''}
+      <ul style="list-style:none;padding:0;margin:8px 0 0">${requisitos.join('')}</ul></div>`;
+  $('#plan-fases').innerHTML = [
+    fase(1, 'Simulación', 'hasta el 29 de octubre', 'En curso', [
+      req((conf.p_ventaja ?? 0) >= 0.95, 'La Principal le gana al mercado con 95% de seguridad', `hoy ${pct(conf.p_ventaja, 0)}`),
+      req((conf.media ?? -1) >= 0.01, 'CLV de la Principal de +1% o más', `hoy ${spct(conf.media)} en ${conf.n || 0} apuestas medidas`),
+      req(!!casaLista, 'Al menos una casa mexicana con valor comprobado (100+ precios con valor medidos y CLV positivo)',
+        casaLista ? `${casaLista.nombre}` : `la que más lleva: ${Math.max(0, ...p.casas.map(c => c.con_valor || 0))} precios con valor medidos`),
+      req((mx.clv_n || 0) >= 30 && (mx.clv || 0) > 0, 'La cartera "México real" con 30+ apuestas medidas y CLV positivo',
+        `${mx.clv_n || 0} medidas${mx.clv != null ? `, CLV ${spct(mx.clv)}` : ''}`),
+    ], 'El simulador mide qué casas mexicanas dejan valor; la cartera "México real" apuesta solo ahí, como lo harías tú.'),
+    fase(2, 'Alertas de Telegram sin dinero', '≈ 1–14 de noviembre', 'Pendiente', [
+      req(false, 'Cuentas abiertas en 2–3 casas mexicanas', 'lo haces tú'),
+      req(false, 'Bot de Telegram creado', 'con @BotFather; Claude lo conecta'),
+      req(false, 'La mayoría de las alertas se alcanzan a tomar al momio indicado', 'se mide en esta fase'),
+    ], 'Te llegan las apuestas como si fueran reales y anotas si alcanzabas el precio. Sin dinero todavía.'),
+    fase(3, 'Dinero real, montos chicos', '≈ desde el 15 de noviembre', 'Pendiente', [
+      req(false, '$10,000–20,000 repartidos en 2–3 casas', 'con topes de pérdida por día y por semana'),
+      req(false, 'CLV real positivo después de 100+ apuestas', 'si sale negativo, pausa automática'),
+    ], 'El tablero suma una pestaña "Real": saldo por casa, resultados y comparación simulador contra real.'),
+    fase(4, 'Escalar', 'después', 'Pendiente', [
+      req(false, 'Subir montos poco a poco solo si el CLV real se sostiene', ''),
+      req(false, 'Si conviene, pagar más datos con el 15% de la ganancia', 'plan de 20,000 créditos ≈ $30 USD'),
+    ], ''),
+  ].join('');
+  $('#plan-casas').innerHTML = tabla([
+    { t: 'Casa', v: c => `<b>${esc(c.nombre)}</b><div class="chica">${c.lectura ? 'el bot ya la puede leer' : 'falta su lector'}</div>` },
+    { t: 'Cuenta', v: c => c.cuenta ? '<span class="chip bueno">✓ Abierta</span>' : '<span class="chip">Sin abrir</span>' },
+    { t: 'Precios leídos', num: 1, v: c => `${(c.precios || 0).toLocaleString('es-MX')}<div class="chica">${c.medidos || 0} medidos</div>` },
+    { t: 'Con valor ≥1.5%', num: 1, v: c => `${c.con_valor || 0}<div class="chica">${c.clv_con_valor != null ? 'CLV ' + spct(c.clv_con_valor) : 'sin medir'}</div>` },
+    { t: 'Mejor valor visto', num: 1, v: c => c.mejor_valor != null ? conSigno(c.mejor_valor, spct(c.mejor_valor)) : '—' },
+    { t: 'Último barrido', num: 1, v: c => c.ultimo_barrido ? fecha(c.ultimo_barrido) : '—' },
+    { t: 'Bono de bienvenida', v: c => `<span class="chica">${esc(c.bono)}</span>` },
+  ], p.casas, '');
+}
+
 function fantasmasVista(d) {
   const f = d.fantasmas;
   if (!f) { $('#fantasmas-kpis').innerHTML = '<div class="vacio">Aparece en la siguiente vuelta del bot.</div>'; return; }
@@ -1037,8 +1121,9 @@ function evidencia(d) {
 const SIGLAS = new Set(['fc', 'cf', 'sc', 'ac', 'cd', 'sd', 'ad', 'ud', 'ca', 'ce', 'rc', 'rcd', 'fk', 'sk', 'afc', 'cfc', 'sad', 'club']);
 const nombreBusqueda = n => String(n || '').split(/\s+/).filter(p => !SIGLAS.has(p.toLowerCase().replace(/\./g, ''))).join(' ') || n;
 
-const ORIGENES = [['creditos', '💳 Créditos'], ['draftkings', '🆓 DraftKings'], ['caliente', '🇲🇽 Caliente']];
-const origen = f => f === 'caliente' ? '<span class="chip malo" title="Momio de Caliente leído a mano en el navegador">🇲🇽 Caliente</span>'
+const ORIGENES = [['creditos', '💳 Créditos'], ['draftkings', '🆓 DraftKings'], ['caliente', '🇲🇽 Caliente'], ['codere_mx', '🇲🇽 Codere']];
+const MEXICANAS = { caliente: 'Caliente', codere_mx: 'Codere', strendus: 'Strendus', betano_mx: 'Betano' };
+const origen = f => MEXICANAS[f] ? `<span class="chip malo" title="Momio de ${MEXICANAS[f]} leído a mano en el navegador">🇲🇽 ${MEXICANAS[f]}</span>`
   : f === 'draftkings' ? '<span class="chip bueno" title="Momio gratuito de DraftKings (ESPN)">🆓 DraftKings</span>'
   : '<span class="chip azul" title="Momio de una descarga pagada con créditos">💳 Créditos</span>';
 
@@ -1255,7 +1340,7 @@ function sistema(d) {
 function pintar() {
   if (!datos) return;
   heroe(datos); kpis(datos); semanas(datos); deportes(datos); creditos(datos); dibujarCurva(datos);
-  boletos(datos); historial(datos); riesgoVista(datos); laboratorio(datos); evidencia(datos); diarioVista(datos); bitacora(datos);
+  boletos(datos); historial(datos); riesgoVista(datos); laboratorio(datos); evidencia(datos); planVista(datos); diarioVista(datos); bitacora(datos);
   sistema(datos);
 }
 
@@ -1325,7 +1410,7 @@ $('#buscar').addEventListener('click', async () => {
 
 const desdeEnlace = () => {
   const p = location.hash.slice(1);
-  if (['resumen', 'apuestas', 'riesgo', 'laboratorio', 'diario', 'bitacora'].includes(p)) mostrar(p);
+  if (['resumen', 'apuestas', 'riesgo', 'laboratorio', 'plan', 'diario', 'bitacora'].includes(p)) mostrar(p);
 };
 addEventListener('hashchange', desdeEnlace);
 desdeEnlace();
