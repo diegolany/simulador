@@ -116,7 +116,7 @@ def _texto(a, config, sugerida=None) -> tuple[str, float, float]:
     inicio = a_fecha(a["inicio"]).astimezone()
     vence = min(a_fecha(a["inicio"]), ahora() + timedelta(minutes=t["minutos_vigencia"])).astimezone()
     minimo = (1 + t["valor_minimo"]) / a["prob_justa"]
-    monto = max(10, round(a["monto"] / config["banca_inicial"] * t["banca_real"] / 10) * 10)
+    monto = monto_real(a, config)
     casa = next((c["nombre"] for c in config["casas_mexico"] if c["clave"] == a["casa"]),
                 a["casa"].replace("_", " ").title())
     lineas = [
@@ -137,6 +137,11 @@ def _texto(a, config, sugerida=None) -> tuple[str, float, float]:
     if a["rol"] == "mexico":
         lineas.insert(1, "🇲🇽 Momio de casa mexicana")
     return "\n".join(lineas), monto, minimo
+
+
+def monto_real(a, config) -> float:
+    """El monto de la simulación llevado a la banca real, redondeado a $10."""
+    return max(10, round(a["monto"] / config["banca_inicial"] * config["telegram"]["banca_real"] / 10) * 10)
 
 
 def _conectar(con, mensaje) -> None:
@@ -308,15 +313,33 @@ def enviar_nuevas(con, config: dict) -> None:
         (desde, *ROLES)).fetchall()
     enviados, cuentas = 0, _cuentas(config)
     precios = _precios_mexico(con, config) if filas else {}
+    tope = tope_alcanzado(con, config) if filas else None
+    disponible = {s["clave"]: s["disponible"] for s in saldos(con, config)}
     for a in filas:
         if a["inicio"] <= iso(ahora()):  # ya empezó: no tiene caso avisar
             con.execute("INSERT INTO avisos (apuesta_id, enviado, respuesta) VALUES (?, ?, 'tarde')",
                         (a["id"], iso(ahora())))
             continue
+        if tope:  # se llegó al tope de pérdida: no se manda (queda anotada para no reintentar)
+            con.execute("INSERT INTO avisos (apuesta_id, enviado, respuesta) VALUES (?, ?, 'tope')", (a["id"], iso(ahora())))
+            if leer_estado(con, "tope_avisado") != _hoy():
+                guardar_estado(con, "tope_avisado", _hoy())
+                _enviar(con, f"🛑 <b>Tope de pérdida {tope} alcanzado</b> en el modo real. No te mando más apuestas hasta "
+                             f"{'mañana' if tope == 'del día' else 'el lunes'}; el simulador sigue normal.")
+            continue
         if enviados >= MAX_POR_CICLO:
             break
         casa, momio_casa = _recomendar(a, cuentas, precios)
+        monto = monto_real(a, config)
+        if casa and disponible.get(casa["clave"], 0) < monto:  # sin saldo: la otra casa si tiene
+            otra = next((c for c in cuentas if disponible.get(c["clave"], 0) >= monto), None)
+            if otra:
+                casa, momio_casa = otra, precios.get(a["evento_id"], {}).get(otra["clave"], {}).get(a["seleccion"])
         texto, monto, minimo = _texto(a, config, (casa["nombre"], momio_casa) if casa else None)
+        if casa and disponible.get(casa["clave"], 0) < monto:
+            texto += f"\n⚠️ Saldo insuficiente en {casa['nombre']}: ${disponible.get(casa['clave'], 0):,.0f} disponibles"
+        if casa:
+            disponible[casa["clave"]] = disponible.get(casa["clave"], 0) - monto
         enlaces = [_boton_casa(con, c, a) for c in cuentas]
         for b, c in zip(enlaces, cuentas):
             if casa and c["clave"] == casa["clave"]:
@@ -350,13 +373,14 @@ def cerrar_vencidas(con, config: dict) -> None:
 
 
 def _resultado_real(f) -> float:
-    momio = f["momio_real"] or f["momio"]
+    momio = f["momio_real"] or f["momio_casa"] or f["momio_minimo"] or f["momio"]
     return f["monto_real"] * (momio - 1) if f["estado"] == "ganada" else -f["monto_real"] if f["estado"] == "perdida" else 0.0
 
 
 def avisar_resultados(con) -> None:
     filas = con.execute(
-        "SELECT v.apuesta_id, v.mensaje_id, v.respuesta, v.momio_real, v.monto_real, a.estado, a.momio, a.ganancia "
+        "SELECT v.apuesta_id, v.mensaje_id, v.respuesta, v.momio_real, v.momio_casa, v.momio_minimo, v.monto_real, "
+        "a.estado, a.momio, a.ganancia "
         "FROM avisos v JOIN apuestas a ON a.id = v.apuesta_id "
         "WHERE v.resultado_avisado = 0 AND v.mensaje_id IS NOT NULL AND a.estado != 'abierta'").fetchall()
     for f in filas:
@@ -365,7 +389,7 @@ def avisar_resultados(con) -> None:
         else:
             texto = f"{'🟢 Ganó' if f['estado'] == 'ganada' else '🔴 Perdió'}. Simulador: {f['ganancia']:+,.0f}."
             if f["respuesta"] == "hecha":
-                texto += (f"\nTú (a {f['momio_real'] or f['momio']:.2f} con ${f['monto_real']:,.0f}): "
+                texto += (f"\nTú (a {f['momio_real'] or f['momio_casa'] or f['momio']:.2f} con ${f['monto_real']:,.0f}): "
                           f"<b>{_resultado_real(f):+,.0f}</b>")
         if _enviar(con, texto, responder_a=f["mensaje_id"]):
             con.execute("UPDATE avisos SET resultado_avisado = 1 WHERE apuesta_id = ?", (f["apuesta_id"],))
@@ -444,6 +468,95 @@ def texto_resumen(s: dict) -> str:
     return "\n".join(lineas)
 
 
+def _hoy() -> str:
+    return datetime.now().astimezone().date().isoformat()
+
+
+def _desde(dias_atras: int = 0, lunes: bool = False) -> str:
+    """Medianoche local (de hoy o del lunes de esta semana) en UTC, para comparar con las fechas de la base."""
+    hoy = datetime.now().astimezone().replace(hour=0, minute=0, second=0, microsecond=0)
+    return iso(hoy - timedelta(days=hoy.weekday() if lunes else dias_atras))
+
+
+def _hechas(con) -> list:
+    return con.execute("SELECT v.*, a.momio, a.estado, a.liquidada FROM avisos v JOIN apuestas a ON a.id = v.apuesta_id "
+                       "WHERE v.respuesta = 'hecha'").fetchall()
+
+
+def saldos(con, config: dict) -> list[dict]:
+    """Saldo de cada casa con cuenta: lo depositado + lo ganado o perdido en ella − lo que está en juego."""
+    iniciales = config["telegram"].get("saldos_iniciales", {})
+    hechas = _hechas(con)
+    salida = []
+    for c in _cuentas(config):
+        suyas = [f for f in hechas if f["casa_real"] == c["clave"]]
+        resultado = sum(_resultado_real(f) for f in suyas if f["estado"] != "abierta")
+        en_juego = sum(f["monto_real"] for f in suyas if f["estado"] == "abierta")
+        inicial = iniciales.get(c["clave"], 0)
+        salida.append({"clave": c["clave"], "nombre": c["nombre"], "inicial": inicial, "resultado": resultado,
+                       "en_juego": en_juego, "disponible": inicial + resultado - en_juego, "apuestas": len(suyas)})
+    return salida
+
+
+def tope_alcanzado(con, config: dict):
+    """'del día' o 'de la semana' si lo perdido en el modo real ya llegó al tope; si no, None."""
+    t, hechas = config["telegram"], _hechas(con)
+    perdido = lambda desde: sum(_resultado_real(f) for f in hechas
+                                if f["estado"] in ("ganada", "perdida") and (f["liquidada"] or "") >= desde)
+    if perdido(_desde()) <= -t["tope_perdida_dia"] * t["banca_real"]:
+        return "del día"
+    if perdido(_desde(lunes=True)) <= -t["tope_perdida_semana"] * t["banca_real"]:
+        return "de la semana"
+    return None
+
+
+def _meta_hoy(config, inicio, momento) -> float:
+    """Meta acumulada a la fecha, repartida en línea recta dentro de cada semana."""
+    objetivos = config["objetivos_semana"]
+    dias = (momento - inicio).total_seconds() / 86400
+    semana = min(int(dias // 7), len(objetivos) - 1)
+    previo = objetivos[semana - 1] if semana else 0.0
+    return previo + (objetivos[semana] - previo) * min(1.0, (dias - 7 * semana) / 7)
+
+
+def resumen_diario(con, config: dict) -> None:
+    """Cada noche (hora_resumen): cómo va la simulación y el modo real, en un solo mensaje."""
+    t = config["telegram"]
+    if datetime.now().astimezone().hour < t.get("hora_resumen", 22) or leer_estado(con, "telegram_resumen_dia") == _hoy():
+        return
+    desde, inicial = _desde(), config["banca_inicial"]
+    principal = con.execute("SELECT * FROM apuestas WHERE estrategia = 'Principal'").fetchall()
+    ganancia = sum(a["ganancia"] or 0 for a in principal if a["estado"] != "abierta")
+    hoy = [a for a in principal if a["estado"] in ("ganada", "perdida") and (a["liquidada"] or "") >= desde]
+    clv = [a["clv"] for a in principal if a["clv"] is not None and a["estado"] != "anulada"]
+    texto_inicio = leer_estado(con, "fecha_inicio")
+    meta = _meta_hoy(config, a_fecha(texto_inicio), ahora()) if texto_inicio else None
+    lineas = [f"🌙 <b>Resumen del día {datetime.now().astimezone():%d/%m}</b>", "",
+              "🧪 <b>Simulación (Principal)</b>",
+              f"Banca ${inicial + ganancia:,.0f} ({ganancia / inicial:+.2%})"
+              + (f" · meta a hoy {meta:+.2%} {'✅' if ganancia / inicial >= meta else '⬇️'}" if meta is not None else ""),
+              f"CLV {statistics.mean(clv):+.2%} en {len(clv)} medidas" if clv else "CLV: sin medidas todavía",
+              f"Hoy: {sum(1 for a in principal if a['colocada'] >= desde)} apuestas nuevas · {len(hoy)} terminadas "
+              f"({sum(1 for a in hoy if a['estado'] == 'ganada')} ganadas) · {sum(a['ganancia'] for a in hoy):+,.0f}"]
+    avisos_hoy = con.execute("SELECT respuesta, COUNT(*) FROM avisos WHERE enviado >= ? AND mensaje_id IS NOT NULL "
+                             "GROUP BY respuesta", (desde,)).fetchall()
+    cuenta = {r[0]: r[1] for r in avisos_hoy}
+    hechas = _hechas(con)
+    real = sum(_resultado_real(f) for f in hechas if f["estado"] in ("ganada", "perdida"))
+    real_hoy = sum(_resultado_real(f) for f in hechas if f["estado"] in ("ganada", "perdida") and (f["liquidada"] or "") >= desde)
+    lineas += ["", "💰 <b>Real</b>" + (" (práctica, sin dinero)" if t["practica"] else ""),
+               f"Alertas hoy: {sum(cuenta.values())} · apostaste {cuenta.get('hecha', 0)} · no cuadraron "
+               f"{cuenta.get('no_habia', 0)} · sin respuesta {cuenta.get('sin_respuesta', 0)}",
+               f"Resultado hoy {real_hoy:+,.0f} · banca ${t['banca_real'] + real:,.0f} ({real / t['banca_real']:+.2%})",
+               "Saldos: " + " · ".join(f"{s['nombre']} ${s['disponible']:,.0f}" for s in saldos(con, config))]
+    tope = tope_alcanzado(con, config)
+    if tope:
+        lineas.append(f"🛑 Tope de pérdida {tope} alcanzado: las alertas están en pausa.")
+    if _enviar(con, "\n".join(lineas)):
+        guardar_estado(con, "telegram_resumen_dia", _hoy())
+        con.commit()
+
+
 def ciclo(con, config: dict) -> None:
     global fallas
     if not token() or not config.get("telegram", {}).get("activo"):
@@ -454,6 +567,7 @@ def ciclo(con, config: dict) -> None:
         enviar_nuevas(con, config)
         cerrar_vencidas(con, config)
         avisar_resultados(con)
+        resumen_diario(con, config)
     if fallas:
         guardar_estado(con, "telegram_fallas", leer_estado(con, "telegram_fallas", 0) + fallas)
         con.commit()

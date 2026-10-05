@@ -287,6 +287,11 @@ footer { margin-top: 28px; color: var(--tenue); font-size: 12.5px; line-height: 
         la diferencia contra lo esperado es suerte normal, no error del método.</p>
     </div>
 
+    <div id="saldos-real" hidden>
+      <h3 class="seccion">Saldo por casa</h3>
+      <div class="kpis" id="saldos-kpis"></div>
+    </div>
+
     <h3 class="seccion">Indicadores</h3>
     <div class="kpis" id="kpis"></div>
 
@@ -1402,6 +1407,18 @@ document.querySelectorAll('#modo button').forEach(b => b.addEventListener('click
   aplicarModo(); pintar();
 }));
 
+function saldosVista(r) {
+  $('#saldos-real').hidden = !r || !r.saldos;
+  if (!r || !r.saldos) return;
+  const banca = r.banca_inicial;
+  $('#saldos-kpis').innerHTML = r.saldos.map(s => kpi('🏦', s.nombre, dinero.format(s.disponible),
+    `depositado ${dinero.format(s.inicial)} · resultado ${sdinero(s.resultado)} · en juego ${dinero.format(s.en_juego)}` +
+    (s.disponible < banca * 0.02 ? ' · <span class="malo">⚠️ saldo bajo</span>' : ''))).join('') +
+    kpi(r.tope ? '🛑' : '🧯', 'Topes de pérdida', r.tope ? `Alcanzado ${r.tope}` : 'En orden',
+      `máximo ${pct(r.topes.dia, 0)} por día (${dinero.format(banca * r.topes.dia)}) y ${pct(r.topes.semana, 0)} por semana; ` +
+      'al llegar, el bot deja de mandar alertas');
+}
+
 function pintar() {
   if (!datos) return;
   const d = vista(), real = modo === 'real';
@@ -1412,6 +1429,7 @@ function pintar() {
   boletos(d); historial(d); planVista(d);
   if (!real) { riesgoVista(d); laboratorio(d); evidencia(d); diarioVista(d); bitacora(d); }
   sistema(d);
+  saldosVista(real ? datos.real : null);
   if (real) $('#subtitulo').textContent = `Día ${d.dia} del modo real · solo las apuestas que marcaste "Aposté" en Telegram`;
 }
 

@@ -57,7 +57,9 @@
   ],
   "bonos_activos": false,
   "barridos_con_creditos": false,
-  "telegram": {"activo": true, "practica": true, "banca_real": 10000, "valor_minimo": 0.01, "minutos_vigencia": 60},
+  "telegram": {"activo": true, "practica": true, "banca_real": 10000, "valor_minimo": 0.01, "minutos_vigencia": 60,
+               "hora_resumen": 22, "tope_perdida_dia": 0.03, "tope_perdida_semana": 0.06,
+               "saldos_iniciales": {"caliente": 5000, "codere_mx": 5000}},
   "fantasmas": {
     "valor_minimo": -0.02,
     "momio_maximo": 15
