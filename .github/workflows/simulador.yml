@@ -30,7 +30,7 @@ permissions:
 jobs:
   ciclo:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 8  # un ciclo normal tarda 1–2 min; si GitHub se atora, se libera la fila más rápido
     environment:
       name: github-pages
       url: ${{ steps.pagina.outputs.page_url }}
