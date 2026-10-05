@@ -70,6 +70,15 @@ def leer_momio(texto: str):
     return n if 1.01 <= n <= 50 else None
 
 
+ICONOS = {"soccer": "⚽", "americanfootball": "🏈", "basketball": "🏀", "icehockey": "🏒", "baseball": "⚾",
+          "tennis": "🎾", "mma": "🥊", "boxing": "🥊", "rugbyleague": "🏉", "rugbyunion": "🏉", "aussierules": "🏉",
+          "cricket": "🏏", "golf": "⛳"}
+
+
+def icono(deporte: str) -> str:
+    return ICONOS.get(deporte.split("_")[0], "🏟️")
+
+
 def _seleccion(s: str) -> str:
     return "Empate" if s.lower() in ("draw", "empate", "x") else s
 
@@ -87,7 +96,7 @@ def _texto(a, config) -> tuple[str, float, float]:
     casa = a["casa"].replace("_", " ").title()
     lineas = [
         "🧪 <b>PRÁCTICA, sin dinero</b>" if t["practica"] else "💰 <b>APUESTA REAL</b>",
-        f"🏟️ {html.escape(a['liga'] or a['deporte'])}: <b>{html.escape(a['local'])} vs {html.escape(a['visitante'])}</b>",
+        f"{icono(a['deporte'])} {html.escape(a['liga'] or a['deporte'])}:<b>{html.escape(a['local'])} vs {html.escape(a['visitante'])}</b>",
         f"🕒 Empieza {inicio:%d/%m %H:%M}",
         f"🎯 Apostar a: <b>{html.escape(_seleccion(a['seleccion']))}</b>",
         f"📈 El bot la tomó en {html.escape(casa)} a {a['momio']:.2f} ({americano(a['momio'])}), "
