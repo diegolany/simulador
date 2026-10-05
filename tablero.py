@@ -5,6 +5,7 @@ import traceback
 from calendar import monthrange
 from datetime import date, timedelta
 
+import avisos
 import cerebro
 import riesgo
 from aprendizaje import (calibracion_pronosticos, calidad_pronosticos, clv_fantasma, estadistica, evidencia,
@@ -433,6 +434,7 @@ def estado(con, config: dict) -> dict:
         "calidad_pronosticos": _seguro(calidad_pronosticos, con),
         "fantasmas": _seguro(resumen_fantasmas, con, config),
         "plan": _seguro(plan_real, con, config),
+        "telegram": _seguro(avisos.estadisticas, con, config),
         "riesgo": _seguro(riesgo.panel, con, config),
         "cerebro": _seguro(lambda: cerebro.obtener(con, config).resumen()),
         "config_riesgo": {**config["riesgo"], "deslizamiento_base": config["ejecucion"]["deslizamiento_base"]},

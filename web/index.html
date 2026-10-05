@@ -415,6 +415,13 @@ footer { margin-top: 28px; color: var(--tenue); font-size: 12.5px; line-height: 
     </div>
     <h3 class="seccion">Fases</h3>
     <div class="pila" id="plan-fases"></div>
+    <h3 class="seccion">Alertas de Telegram: medición</h3>
+    <div class="tarjeta">
+      <p class="ayuda">Cada apuesta de la Principal y de "México real" te llega al celular. Aquí se mide si los momios se consiguen de verdad, en qué
+        casa, qué tan rápido contestas y si el sistema de avisos funciona. En el chat del bot escribe <b>/resumen</b> para ver lo mismo.</p>
+      <div class="kpis" id="telegram-kpis"></div>
+      <div class="tabla" id="telegram-casas" style="margin-top:12px"></div>
+    </div>
     <h3 class="seccion">Casas mexicanas: ¿cuáles le ganan al mercado?</h3>
     <div class="tarjeta">
       <p class="ayuda">Cada barrido lee los momios de estas casas (sin iniciar sesión) y los compara contra el precio justo de Pinnacle. Cada precio queda
@@ -1034,6 +1041,8 @@ function planVista(d) {
   const p = d.plan, conf = d.riesgo?.confianza || {};
   if (!p) { $('#plan-fases').innerHTML = '<div class="vacio">Aparece en la siguiente vuelta del bot.</div>'; return; }
   const mx = (d.laboratorio || []).find(e => e.rol === 'mexico') || {};
+  const tg = d.telegram || {}, cuentas = p.casas.filter(c => c.cuenta).length;
+  telegramVista(tg);
   const casaLista = p.casas.find(c => c.con_valor >= 100 && c.clv_con_valor > 0);
   const req = (cumple, texto, detalle) => `<li style="margin:4px 0">${cumple ? '✅' : '⬜'} ${texto} <span class="chica">— ${detalle}</span></li>`;
   const fase = (num, titulo, cuando, estado, requisitos, nota) => `<div class="tarjeta">
@@ -1050,10 +1059,12 @@ function planVista(d) {
       req((mx.clv_n || 0) >= 30 && (mx.clv || 0) > 0, 'La cartera "México real" con 30+ apuestas medidas y CLV positivo',
         `${mx.clv_n || 0} medidas${mx.clv != null ? `, CLV ${spct(mx.clv)}` : ''}`),
     ], 'El simulador mide qué casas mexicanas dejan valor; la cartera "México real" apuesta solo ahí, como lo harías tú.'),
-    fase(2, 'Alertas de Telegram sin dinero', '≈ 1–14 de noviembre', 'Pendiente', [
-      req(false, 'Cuentas abiertas en 2–3 casas mexicanas', 'lo haces tú'),
-      req(false, 'Bot de Telegram creado', 'con @BotFather; Claude lo conecta'),
-      req(false, 'La mayoría de las alertas se alcanzan a tomar al momio indicado', 'se mide en esta fase'),
+    fase(2, 'Alertas de Telegram sin dinero', 'desde el 4 de octubre', tg.conectado ? 'En curso' : 'Pendiente', [
+      req(cuentas >= 2, 'Cuentas abiertas en 2–3 casas mexicanas', `${cuentas} abiertas`),
+      req(!!tg.conectado, 'Bot de Telegram conectado', tg.conectado ? '@diego_apuestas_bot' : 'pícale Iniciar a @diego_apuestas_bot'),
+      req((tg.hechas || 0) + (tg.no_habia || 0) >= 30 && (tg.tasa_conseguido ?? 0) >= 0.7,
+        'Al menos 70% de las alertas se consiguen al momio indicado (30+ intentos)',
+        `hoy ${pct(tg.tasa_conseguido, 0)} en ${(tg.hechas || 0) + (tg.no_habia || 0)} intentos`),
     ], 'Te llegan las apuestas como si fueran reales y anotas si alcanzabas el precio. Sin dinero todavía.'),
     fase(3, 'Dinero real, montos chicos', '≈ desde el 15 de noviembre', 'Pendiente', [
       req(false, '$10,000–20,000 repartidos en 2–3 casas', 'con topes de pérdida por día y por semana'),
@@ -1073,6 +1084,31 @@ function planVista(d) {
     { t: 'Último barrido', num: 1, v: c => c.ultimo_barrido ? fecha(c.ultimo_barrido) : '—' },
     { t: 'Bono de bienvenida', v: c => `<span class="chica">${esc(c.bono)}</span>` },
   ], p.casas, '');
+}
+
+function telegramVista(s) {
+  if (!s.conectado) {
+    $('#telegram-kpis').innerHTML = '<div class="vacio">Falta conectar: abre @diego_apuestas_bot en Telegram y pícale Iniciar.</div>';
+    $('#telegram-casas').innerHTML = '';
+    return;
+  }
+  const min = x => x == null ? '—' : `${Math.round(x)} min`;
+  const pesos = x => conSigno(x, (x >= 0 ? '+' : '−') + '$' + Math.abs(Math.round(x)).toLocaleString('es-MX'));
+  $('#telegram-kpis').innerHTML = [
+    kpi('📨', 'Alertas enviadas', s.enviadas, `${s.pendientes} pendientes · ${s.sin_respuesta} sin contestar · ${s.paso} pasaste`),
+    kpi('🎯', 'Momio conseguido', pct(s.tasa_conseguido, 0), `${s.al_momio} al momio · ${s.bajo_momio} más bajo · ${s.no_habia} no estaba`),
+    kpi('⏱️', 'Tardas en contestar', min(s.respuesta_mediana), `mediana · ${pct(s.respuesta_rapidas, 0)} en menos de 15 min`),
+    kpi('💰', 'Tu resultado (práctica)', pesos(s.resultado_real), `${s.cerradas_real} terminadas · simulador a tu escala ${pesos(s.resultado_simulador)}`),
+    kpi('⚙️', 'Funcionamiento', min(s.retraso_mediano), `de la detección al aviso · ${s.tarde} tarde · ${s.fallas} fallas` +
+      (s.ultima_lectura ? ` · última lectura ${fecha(s.ultima_lectura)}` : '')),
+  ].join('');
+  $('#telegram-casas').innerHTML = s.casas.length ? tabla([
+    { t: 'Casa', v: c => `<b>${esc(c.nombre)}</b>` },
+    { t: 'Hechas', num: 1, v: c => `${c.hechas}<div class="chica">${c.al_momio} al momio</div>` },
+    { t: 'Momio vs el del bot', num: 1, v: c => c.diferencia != null ? conSigno(c.diferencia, spct(c.diferencia)) : '—' },
+    { t: 'Apostado', num: 1, v: c => '$' + Math.round(c.monto).toLocaleString('es-MX') },
+    { t: 'Resultado', num: 1, v: c => pesos(c.resultado) },
+  ], s.casas, '') : '';
 }
 
 function fantasmasVista(d) {

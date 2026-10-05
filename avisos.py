@@ -1,9 +1,10 @@
 """Avisos por Telegram: cada apuesta nueva de la Principal y de "México real" le llega a Diego con botones.
 
 Diego la hace a mano en la app de la casa (las casas no permiten apostar con bots) y contesta con un botón:
-✅ La hice / ❌ No estaba el momio / ⏭️ Paso. Las respuestas se leen en el siguiente ciclo (cada 5-15 min), así que
-la libreta de "lo que se hizo en la vida real" se arma sola. Solo corre en la nube (secreto TELEGRAM_TOKEN): en la PC
-no, para que no se dupliquen mensajes ni se roben las respuestas.
+✅ Caliente / ✅ Codere / ❌ No estaba el momio / ⏭️ Paso. Las respuestas se leen en el siguiente ciclo (cada 5-15 min),
+así que la libreta de "lo que se hizo en la vida real" se arma sola, con sus estadísticas (/resumen en el chat y la
+pestaña "Plan real"). Solo corre en la nube (secreto TELEGRAM_TOKEN): en la PC no, para que no se dupliquen mensajes
+ni se roben las respuestas.
 
 El primer chat privado que le escriba al bot queda como el único autorizado.
 """
@@ -11,15 +12,17 @@ import html
 import json
 import os
 import re
+import statistics
 import urllib.error
 import urllib.request
-from datetime import timedelta
+from datetime import datetime, timedelta, timezone
 
 from base_datos import a_fecha, ahora, anotar, guardar_estado, iso, leer_estado
 
 ROLES = ("principal", "mexico")
 MAX_POR_CICLO = 8
 RESPUESTAS = {"h": ("hecha", "✅ La hiciste"), "n": ("no_habia", "❌ No estaba el momio"), "p": ("paso", "⏭️ La pasaste")}
+fallas = 0  # llamadas a Telegram que fallaron en este ciclo
 
 
 def token() -> str:
@@ -28,6 +31,7 @@ def token() -> str:
 
 def _llamar(metodo: str, datos: dict):
     """Llama a la API de Telegram. Nunca truena el ciclo ni escribe el token en los registros."""
+    global fallas
     clave = token()
     peticion = urllib.request.Request(f"https://api.telegram.org/bot{clave}/{metodo}",
                                       data=json.dumps(datos).encode(), headers={"Content-Type": "application/json"})
@@ -35,6 +39,8 @@ def _llamar(metodo: str, datos: dict):
         with urllib.request.urlopen(peticion, timeout=15) as r:
             return json.load(r).get("result")
     except (urllib.error.URLError, OSError, ValueError) as e:
+        if metodo != "answerCallbackQuery":  # contestar un botón viejo siempre falla; no es una falla del sistema
+            fallas += 1
         print(f"Telegram {metodo}: {str(e).replace(clave, '***')}", flush=True)
         return None
 
@@ -68,7 +74,11 @@ def _seleccion(s: str) -> str:
     return "Empate" if s.lower() in ("draw", "empate", "x") else s
 
 
-def _texto(a, config) -> tuple[str, float]:
+def _cuentas(config) -> list:
+    return [c for c in config["casas_mexico"] if c.get("cuenta")]
+
+
+def _texto(a, config) -> tuple[str, float, float]:
     t = config["telegram"]
     inicio = a_fecha(a["inicio"]).astimezone()
     vence = min(a_fecha(a["inicio"]), ahora() + timedelta(minutes=t["minutos_vigencia"])).astimezone()
@@ -88,7 +98,7 @@ def _texto(a, config) -> tuple[str, float]:
     ]
     if a["rol"] == "mexico":
         lineas.insert(1, "🇲🇽 Momio de casa mexicana")
-    return "\n".join(lineas), monto
+    return "\n".join(lineas), monto, minimo
 
 
 def _conectar(con, mensaje) -> None:
@@ -96,18 +106,24 @@ def _conectar(con, mensaje) -> None:
     guardar_estado(con, "telegram_chat", chat)
     guardar_estado(con, "avisos_desde", con.execute("SELECT COALESCE(MAX(id), 0) FROM apuestas").fetchone()[0])
     anotar(con, "sistema", "Telegram conectado: desde ahora las apuestas de la Principal y de México real llegan al celular.")
+    _llamar("setMyCommands", {"commands": [{"command": "resumen", "description": "Estadísticas de las alertas"}]})
     _enviar(con, "✅ <b>Conectado.</b>\nTe mando aquí cada apuesta nueva de la Principal y de México real.\n\n"
                  "1. Ábrela en Caliente o Codere y revisa el momio.\n"
                  "2. Si paga lo mínimo o más, hazla con el monto sugerido.\n"
-                 "3. Pícale ✅ La hice, ❌ No estaba o ⏭️ Paso.\n\n"
-                 "Si te dieron otro momio, respóndeme el mensaje de la apuesta con el número (ej. 1.95 o -105).\n"
-                 "Los botones se registran en el siguiente ciclo (5 a 15 min).")
+                 "3. Pícale la casa donde la hiciste, ❌ No estaba o ⏭️ Paso.\n\n"
+                 "Si te dieron otro momio (o el que había cuando no estaba), respóndeme el mensaje de la apuesta con el "
+                 "número (ej. 1.95 o -105).\nLos botones se registran en el siguiente ciclo (5 a 15 min).\n"
+                 "Escribe /resumen para ver las estadísticas.")
 
 
-def leer_respuestas(con) -> None:
+def leer_respuestas(con, config) -> None:
     desde = leer_estado(con, "telegram_offset", 0)
+    previo = leer_estado(con, "telegram_leido")
     cambios = _llamar("getUpdates", {"offset": desde, "timeout": 0,
-                                     "allowed_updates": ["message", "callback_query"]}) or []
+                                     "allowed_updates": ["message", "callback_query"]})
+    if cambios is None:
+        return
+    guardar_estado(con, "telegram_leido", iso(ahora()))
     for u in cambios:
         guardar_estado(con, "telegram_offset", u["update_id"] + 1)
         chat = leer_estado(con, "telegram_chat")
@@ -116,40 +132,57 @@ def leer_respuestas(con) -> None:
             if chat is None:
                 _conectar(con, mensaje)
             elif mensaje["chat"]["id"] == chat:
-                _mensaje(con, mensaje)
+                _mensaje(con, config, mensaje)
         consulta = u.get("callback_query")
         if consulta and chat is not None and (consulta.get("message") or {}).get("chat", {}).get("id") == chat:
-            _boton(con, consulta)
+            _boton(con, config, consulta, previo)
     con.commit()
 
 
-def _mensaje(con, mensaje) -> None:
+def _mensaje(con, config, mensaje) -> None:
+    texto = mensaje.get("text", "")
+    if texto.strip().lower().lstrip("/").startswith("resumen"):
+        _enviar(con, texto_resumen(estadisticas(con, config)))
+        return
     original = (mensaje.get("reply_to_message") or {}).get("message_id")
-    aviso = original and con.execute("SELECT apuesta_id FROM avisos WHERE mensaje_id = ?", (original,)).fetchone()
-    momio = leer_momio(mensaje.get("text", ""))
+    aviso = original and con.execute("SELECT apuesta_id, respuesta FROM avisos WHERE mensaje_id = ?",
+                                     (original,)).fetchone()
+    momio = leer_momio(texto)
     if aviso and momio:
-        con.execute("UPDATE avisos SET momio_real = ?, respuesta = 'hecha', respondido = COALESCE(respondido, ?) "
-                    "WHERE apuesta_id = ?", (momio, iso(ahora()), aviso[0]))
-        _enviar(con, f"📝 Anotado: la hiciste a {momio:.2f} ({americano(momio)}).", responder_a=original)
+        momento = iso(datetime.fromtimestamp(mensaje["date"], timezone.utc) if mensaje.get("date") else ahora())
+        no_habia = aviso["respuesta"] == "no_habia"
+        con.execute("UPDATE avisos SET momio_real = ?, respuesta = COALESCE(respuesta, 'hecha'), "
+                    "respondido = COALESCE(respondido, ?) WHERE apuesta_id = ?", (momio, momento, aviso["apuesta_id"]))
+        _enviar(con, f"📝 Anotado: {'había' if no_habia else 'la hiciste a'} {momio:.2f} ({americano(momio)}).",
+                responder_a=original)
     else:
         _enviar(con, "Te escribo solo cuando hay apuesta. Para corregir un momio, responde al mensaje de esa apuesta "
-                     "con el número (ej. 1.95 o -105).")
+                     "con el número (ej. 1.95 o -105). Escribe /resumen para ver las estadísticas.")
 
 
-def _boton(con, consulta) -> None:
-    clave, _, ident = consulta.get("data", "").partition(":")
-    if not ident.isdigit():
+def _boton(con, config, consulta, previo) -> None:
+    partes = consulta.get("data", "").split(":")
+    if len(partes) < 2 or partes[0] not in RESPUESTAS or not partes[1].isdigit():
         return
-    ident = int(ident)
-    fila = con.execute("SELECT texto, mensaje_id FROM avisos WHERE apuesta_id = ?", (ident,)).fetchone()
-    if clave not in RESPUESTAS or not fila:
+    ident, casa = int(partes[1]), (partes[2] if len(partes) > 2 else None)
+    fila = con.execute("SELECT texto, mensaje_id, enviado FROM avisos WHERE apuesta_id = ?", (ident,)).fetchone()
+    if not fila:
         return
-    respuesta, etiqueta = RESPUESTAS[clave]
-    con.execute("UPDATE avisos SET respuesta = ?, respondido = ? WHERE apuesta_id = ?", (respuesta, iso(ahora()), ident))
+    respuesta, etiqueta = RESPUESTAS[partes[0]]
+    if casa:
+        nombre = next((c["nombre"] for c in config["casas_mexico"] if c["clave"] == casa), casa)
+        etiqueta += f" en {nombre}"
+    # Telegram no dice a qué hora se picó el botón: se estima a la mitad entre esta lectura y la anterior
+    fin, enviado = ahora(), a_fecha(fila["enviado"])
+    inicio = max(enviado, a_fecha(previo)) if previo else enviado
+    momento = iso(inicio + (fin - inicio) / 2)
+    con.execute("UPDATE avisos SET respuesta = ?, respondido = ?, casa_real = ? WHERE apuesta_id = ?",
+                (respuesta, momento, casa, ident))
     _llamar("answerCallbackQuery", {"callback_query_id": consulta["id"], "text": etiqueta})
-    extra = "\n<i>Si te dieron otro momio, respóndeme este mensaje con el número.</i>" if respuesta == "hecha" else ""
-    _llamar("editMessageText", {"chat_id": leer_estado(con, "telegram_chat"), "message_id": fila[1],
-                                "text": f"{fila[0]}\n\n<b>{etiqueta}</b>{extra}", "parse_mode": "HTML",
+    extra = "\n<i>Si te dieron otro momio, respóndeme este mensaje con el número.</i>" if respuesta == "hecha" else (
+        "\n<i>Si quieres, respóndeme este mensaje con el momio que había.</i>" if respuesta == "no_habia" else "")
+    _llamar("editMessageText", {"chat_id": leer_estado(con, "telegram_chat"), "message_id": fila["mensaje_id"],
+                                "text": f"{fila['texto']}\n\n<b>{etiqueta}</b>{extra}", "parse_mode": "HTML",
                                 "disable_web_page_preview": True})
     anotar(con, "sistema", f"Telegram: {etiqueta.split(' ', 1)[1].lower()} (apuesta #{ident}).")
 
@@ -169,19 +202,24 @@ def enviar_nuevas(con, config: dict) -> None:
             continue
         if enviados >= MAX_POR_CICLO:
             break
-        texto, monto = _texto(a, config)
-        casas = [c for c in config["casas_mexico"] if c.get("cuenta") or c.get("lectura")][:2]
-        botones = [[{"text": f"Abrir {c['nombre']}", "url": c["url"]} for c in casas],
-                   [{"text": "✅ La hice", "callback_data": f"h:{a['id']}"},
-                    {"text": "❌ No estaba", "callback_data": f"n:{a['id']}"},
+        texto, monto, minimo = _texto(a, config)
+        cuentas = _cuentas(config)
+        botones = [[{"text": f"Abrir {c['nombre']}", "url": c["url"]} for c in cuentas],
+                   [{"text": f"✅ {c['nombre']}", "callback_data": f"h:{a['id']}:{c['clave']}"} for c in cuentas],
+                   [{"text": "❌ No estaba", "callback_data": f"n:{a['id']}"},
                     {"text": "⏭️ Paso", "callback_data": f"p:{a['id']}"}]]
-        enviado = _enviar(con, texto, botones)
+        enviado = _enviar(con, texto, [fila for fila in botones if fila])
         if not enviado:
             break  # Telegram no respondió: se reintenta en el siguiente ciclo
-        con.execute("INSERT INTO avisos (apuesta_id, mensaje_id, texto, enviado, monto_real) VALUES (?, ?, ?, ?, ?)",
-                    (a["id"], enviado["message_id"], texto, iso(ahora()), monto))
+        con.execute("INSERT INTO avisos (apuesta_id, mensaje_id, texto, enviado, monto_real, momio_minimo) "
+                    "VALUES (?, ?, ?, ?, ?, ?)", (a["id"], enviado["message_id"], texto, iso(ahora()), monto, minimo))
         enviados += 1
     con.commit()
+
+
+def _resultado_real(f) -> float:
+    momio = f["momio_real"] or f["momio"]
+    return f["monto_real"] * (momio - 1) if f["estado"] == "ganada" else -f["monto_real"] if f["estado"] == "perdida" else 0.0
 
 
 def avisar_resultados(con) -> None:
@@ -193,22 +231,96 @@ def avisar_resultados(con) -> None:
         if f["estado"] == "anulada":
             texto = "↩️ Partido anulado o pospuesto: se devuelve lo apostado."
         else:
-            gano = f["estado"] == "ganada"
-            texto = f"{'🟢 Ganó' if gano else '🔴 Perdió'}. Simulador: {f['ganancia']:+,.0f}."
+            texto = f"{'🟢 Ganó' if f['estado'] == 'ganada' else '🔴 Perdió'}. Simulador: {f['ganancia']:+,.0f}."
             if f["respuesta"] == "hecha":
-                momio = f["momio_real"] or f["momio"]
-                real = f["monto_real"] * (momio - 1) if gano else -f["monto_real"]
-                texto += f"\nTú (si la hiciste a {momio:.2f} con ${f['monto_real']:,.0f}): <b>{real:+,.0f}</b>"
+                texto += (f"\nTú (a {f['momio_real'] or f['momio']:.2f} con ${f['monto_real']:,.0f}): "
+                          f"<b>{_resultado_real(f):+,.0f}</b>")
         if _enviar(con, texto, responder_a=f["mensaje_id"]):
             con.execute("UPDATE avisos SET resultado_avisado = 1 WHERE apuesta_id = ?", (f["apuesta_id"],))
     con.commit()
 
 
+def estadisticas(con, config: dict) -> dict:
+    """Todo lo que mide la fase de alertas: si los momios se consiguen, en qué casa, qué tan rápido contesta Diego,
+    cómo va el resultado real contra el simulador y si el sistema de avisos funciona."""
+    filas = con.execute(
+        "SELECT v.*, a.momio, a.colocada, a.estado, a.ganancia FROM avisos v JOIN apuestas a ON a.id = v.apuesta_id"
+    ).fetchall()
+    escala = config["telegram"]["banca_real"] / config["banca_inicial"]
+    enviadas = [f for f in filas if f["mensaje_id"]]
+    hechas = [f for f in enviadas if f["respuesta"] == "hecha"]
+    no_habia = [f for f in enviadas if f["respuesta"] == "no_habia"]
+    vencida = lambda f: f["respuesta"] is None and a_fecha(f["enviado"]) < ahora() - timedelta(
+        minutes=config["telegram"]["minutos_vigencia"])
+    al_momio = [f for f in hechas if not f["momio_real"] or f["momio_real"] >= (f["momio_minimo"] or 0) - 1e-9]
+    minutos = lambda a, b: (a_fecha(b) - a_fecha(a)).total_seconds() / 60
+    respuesta = [minutos(f["enviado"], f["respondido"]) for f in enviadas if f["respondido"]]
+    retraso = [minutos(f["colocada"], f["enviado"]) for f in enviadas]
+    cerradas = [f for f in hechas if f["estado"] in ("ganada", "perdida", "anulada")]
+    sim = [f for f in enviadas if f["estado"] in ("ganada", "perdida", "anulada")]
+    casas, ids_al_momio = {}, {f["apuesta_id"] for f in al_momio}
+    for c in config["casas_mexico"]:
+        suyas = [f for f in hechas if f["casa_real"] == c["clave"]]
+        if c.get("cuenta") or suyas:
+            con_momio = [f["momio_real"] / f["momio"] - 1 for f in suyas if f["momio_real"]]
+            casas[c["clave"]] = {
+                "nombre": c["nombre"], "hechas": len(suyas),
+                "al_momio": sum(1 for f in suyas if f["apuesta_id"] in ids_al_momio),
+                "diferencia": statistics.mean(con_momio) if con_momio else None,
+                "resultado": sum(_resultado_real(f) for f in suyas if f["estado"] in ("ganada", "perdida", "anulada")),
+                "monto": sum(f["monto_real"] for f in suyas)}
+    intentadas = len(hechas) + len(no_habia)
+    return {
+        "conectado": leer_estado(con, "telegram_chat") is not None,
+        "ultima_lectura": leer_estado(con, "telegram_leido"),
+        "fallas": leer_estado(con, "telegram_fallas", 0),
+        "enviadas": len(enviadas),
+        "tarde": sum(1 for f in filas if f["respuesta"] == "tarde"),
+        "hechas": len(hechas), "al_momio": len(al_momio), "bajo_momio": len(hechas) - len(al_momio),
+        "no_habia": len(no_habia), "paso": sum(1 for f in enviadas if f["respuesta"] == "paso"),
+        "sin_respuesta": sum(1 for f in enviadas if vencida(f)),
+        "pendientes": sum(1 for f in enviadas if f["respuesta"] is None and not vencida(f)),
+        "tasa_conseguido": len(al_momio) / intentadas if intentadas else None,
+        "respuesta_mediana": statistics.median(respuesta) if respuesta else None,
+        "respuesta_rapidas": sum(1 for m in respuesta if m <= 15) / len(respuesta) if respuesta else None,
+        "retraso_mediano": statistics.median(retraso) if retraso else None,
+        "resultado_real": sum(_resultado_real(f) for f in cerradas),
+        "monto_real": sum(f["monto_real"] for f in cerradas),
+        "resultado_simulador": sum((f["ganancia"] or 0) * escala for f in sim),
+        "cerradas_real": len(cerradas), "cerradas_simulador": len(sim),
+        "casas": list(casas.values()),
+    }
+
+
+def texto_resumen(s: dict) -> str:
+    p = lambda x: "—" if x is None else f"{x:.0%}"
+    m = lambda x: "—" if x is None else f"{x:.0f} min"
+    lineas = [
+        "📊 <b>Resumen de alertas</b>",
+        f"📨 Enviadas: {s['enviadas']} · pendientes {s['pendientes']} · sin contestar {s['sin_respuesta']}",
+        f"🎯 Momio conseguido: <b>{p(s['tasa_conseguido'])}</b> ({s['al_momio']} al momio, {s['bajo_momio']} más bajo, "
+        f"{s['no_habia']} no estaba) · pasaste {s['paso']}",
+        f"⏱️ Tardas en contestar: {m(s['respuesta_mediana'])} (mediana) · {p(s['respuesta_rapidas'])} en menos de 15 min",
+        f"💰 Tú: <b>{s['resultado_real']:+,.0f}</b> en {s['cerradas_real']} terminadas (${s['monto_real']:,.0f} apostados)"
+        f" · simulador a tu escala: {s['resultado_simulador']:+,.0f} en {s['cerradas_simulador']}",
+    ]
+    for c in s["casas"]:
+        dif = "" if c["diferencia"] is None else f", momio {c['diferencia']:+.1%} vs el del bot"
+        lineas.append(f"🏦 {c['nombre']}: {c['hechas']} hechas ({c['al_momio']} al momio{dif}) · {c['resultado']:+,.0f}")
+    lineas.append(f"⚙️ Sistema: aviso {m(s['retraso_mediano'])} después de detectar la apuesta · "
+                  f"{s['tarde']} detectadas tarde · {s['fallas']} fallas de envío")
+    return "\n".join(lineas)
+
+
 def ciclo(con, config: dict) -> None:
+    global fallas
     if not token() or not config.get("telegram", {}).get("activo"):
         return
-    leer_respuestas(con)
-    if leer_estado(con, "telegram_chat") is None:
-        return
-    enviar_nuevas(con, config)
-    avisar_resultados(con)
+    fallas = 0
+    leer_respuestas(con, config)
+    if leer_estado(con, "telegram_chat") is not None:
+        enviar_nuevas(con, config)
+        avisar_resultados(con)
+    if fallas:
+        guardar_estado(con, "telegram_fallas", leer_estado(con, "telegram_fallas", 0) + fallas)
+        con.commit()
