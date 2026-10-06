@@ -430,6 +430,19 @@ def _activas(con, todas: list[dict], config: dict, momento) -> list[dict]:
     return activas
 
 
+def _vs_principal(post, post_p, config) -> dict:
+    """Lo que decide si una retadora reemplaza a la Principal (aprendizaje.revision): las dos con al menos
+    `min_apuestas_clv_promocion` apuestas con CLV, 95% de probabilidad de ser mejor y +0.5 pts de ventaja."""
+    ap = config["aprendizaje"]
+    salida = {"n": post["n"] if post else 0, "n_principal": post_p["n"] if post_p else 0,
+              "minimo": ap["min_apuestas_clv_promocion"], "requerida": ap["prob_promocion"], "prob": None}
+    if post and post_p:
+        salida["prob"] = _seguro(riesgo.prob_mejor, post, post_p)
+        salida["listo"] = (salida["n"] >= salida["minimo"] and salida["n_principal"] >= salida["minimo"]
+                           and (salida["prob"] or 0) >= salida["requerida"] and post["ventaja"] > post_p["ventaja"] + 0.005)
+    return salida
+
+
 def _estado_simulado(con, config, todas, momento, inicio, inicial, principal, activas, historial, real) -> dict:
     # Laboratorio: todas las estrategias compitiendo, cada una con su banca. La confianza usa el CLV encogido:
     # ya descuenta la suerte de tener muchas estrategias compitiendo a la vez
@@ -453,7 +466,8 @@ def _estado_simulado(con, config, todas, momento, inicio, inicial, principal, ac
         laboratorio.append({"nombre": e["nombre"], "rol": e["rol"], "tipo": e["tipo"],
                             "descripcion": e["descripcion"], "parametros": json.loads(e["parametros"]),
                             "banca": inicial + r["ganancia"], "por_origen": por_origen, "confianza": confianza,
-                            "caida_max": caidas["maxima_pct"], "fantasma": prueba, **r})
+                            "caida_max": caidas["maxima_pct"], "fantasma": prueba,
+                            "vs_principal": _vs_principal(post, posts.get("Principal"), config), **r})
 
     # Calibración con todos los partidos pronosticados (se haya apostado o no)
     partidos_calibrados, calibracion = calibracion_pronosticos(con)

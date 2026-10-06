@@ -394,7 +394,7 @@ footer { margin-top: 28px; color: var(--tenue); font-size: 12.5px; line-height: 
       <p class="ayuda" style="margin:0">Cada estrategia apuesta con su propia banca de $100,000 sobre los mismos momios. El ranking se ordena por
         la <b>ventaja real estimada</b>: el CLV (si conseguimos mejores momios que el mercado al cierre) corregido por suerte. Con muchas
         estrategias compitiendo, alguna va a destacar por casualidad; por eso el CLV de cada una se "encoge" hacia cero mientras tenga pocas apuestas.
-        Cada semana: si una retadora es mejor que la Principal con 95% de probabilidad, la Principal adopta sus reglas; las que pierden se retiran y nacen variantes nuevas.</p>
+        Cada 3 días: si una retadora es mejor que la Principal con 95% de probabilidad (las dos con 25+ apuestas medidas), la Principal adopta sus reglas; las que pierden se retiran y nacen variantes nuevas.</p>
     </div>
     <h3 class="seccion">Evidencia histórica (fútbol)</h3>
     <div class="tarjeta">
@@ -1022,6 +1022,16 @@ function laboratorio(d) {
         if (!c || c.p_ventaja == null) return '<span class="tenue">—</span>';
         return `${pct(c.p_ventaja, 0)} ${probChip(c.p_ventaja)}<div class="chica">estimada ${spct(c.ventaja, 2)}` +
           (c.faltan_clv ? ` · faltan ${cantidad(c.faltan_clv)}` : '') + '</div>';
+      } },
+    { t: '¿Reemplaza a la Principal?', num: 1, v: e => {
+        const s = e.vs_principal;
+        if (e.rol === 'principal') return '<span class="tenue">es la Principal</span>';
+        if (!['retadora', 'experimento', 'mexico'].includes(e.rol) || !s) return '<span class="tenue">—</span>';
+        const faltan = Math.max(0, s.minimo - s.n), faltanP = Math.max(0, s.minimo - s.n_principal);
+        const estado = s.listo ? '<span class="chip bueno">✓ Sí: la reemplaza en la próxima revisión</span>'
+          : s.prob != null && s.prob <= 0.25 ? '<span class="chip malo">✗ Va peor</span>' : '<span class="chip">Aún no</span>';
+        return `${s.prob == null ? '—' : pct(s.prob, 0)} ${estado}<div class="chica">necesita ${pct(s.requerida, 0)}` +
+          (faltan ? ` · le faltan ${faltan} apuestas medidas` : '') + (faltanP ? ` · a la Principal le faltan ${faltanP}` : '') + '</div>';
       } },
     { t: 'Prueba fantasma', num: 1, v: e => e.fantasma && e.fantasma.n
         ? `${conSigno(e.fantasma.clv, spct(e.fantasma.clv))}<div class="chica">${e.fantasma.n.toLocaleString('es-MX')} partidos</div>`
