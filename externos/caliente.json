@@ -1,6 +1,6 @@
 {
  "casa": "caliente",
- "capturado": "2026-10-06T01:17:29+00:00",
+ "capturado": "2026-10-06T02:31:24+00:00",
  "partidos": [
   {
    "deporte": "icehockey_nhl",
@@ -10,9 +10,8 @@
     "New York Rangers"
    ],
    "momios": {
-    "New York Islanders": 2.85,
-    "New York Rangers": 2.05,
-    "Empate": 3.8
+    "New York Islanders": 2.25,
+    "New York Rangers": 1.6667
    },
    "url": "https://sports.caliente.mx/es_MX/e/33463257/New-York-Islanders-%40-New-York-Rangers"
   },
@@ -24,9 +23,8 @@
     "Toronto Maple Leafs"
    ],
    "momios": {
-    "Nashville Predators": 2.85,
-    "Toronto Maple Leafs": 2.05,
-    "Empate": 3.9
+    "Nashville Predators": 2.25,
+    "Toronto Maple Leafs": 1.6667
    },
    "url": "https://sports.caliente.mx/es_MX/e/33463261/Nashville-Predators-%40-Toronto-Maple-Leafs"
   },
@@ -38,9 +36,8 @@
     "Detroit Red Wings"
    ],
    "momios": {
-    "Ottawa Senators": 2.4,
-    "Detroit Red Wings": 2.4,
-    "Empate": 3.75
+    "Ottawa Senators": 1.9091,
+    "Detroit Red Wings": 1.9091
    },
    "url": "https://sports.caliente.mx/es_MX/e/33463276/Ottawa-Senators-%40-Detroit-Red-Wings"
   },
@@ -52,9 +49,8 @@
     "Chicago Blackhawks"
    ],
    "momios": {
-    "St. Louis Blues": 2.2,
-    "Chicago Blackhawks": 2.625,
-    "Empate": 3.75
+    "St. Louis Blues": 1.7273,
+    "Chicago Blackhawks": 2.15
    },
    "url": "https://sports.caliente.mx/es_MX/e/33463277/St.-Louis-Blues-%40-Chicago-Blackhawks"
   },
@@ -66,9 +62,8 @@
     "Buffalo Sabres"
    ],
    "momios": {
-    "Minnesota Wild": 2.375,
-    "Buffalo Sabres": 2.375,
-    "Empate": 3.85
+    "Minnesota Wild": 1.9091,
+    "Buffalo Sabres": 1.9091
    },
    "url": "https://sports.caliente.mx/es_MX/e/33463289/Minnesota-Wild-%40-Buffalo-Sabres"
   },
@@ -80,9 +75,8 @@
     "Seattle Kraken"
    ],
    "momios": {
-    "Vegas Golden Knights": 1.95,
-    "Seattle Kraken": 3,
-    "Empate": 3.95
+    "Vegas Golden Knights": 1.5714,
+    "Seattle Kraken": 2.45
    },
    "url": "https://sports.caliente.mx/es_MX/e/33463290/Vegas-Golden-Knights-%40-Seattle-Kraken"
   },
@@ -94,9 +88,8 @@
     "Montreal Canadiens"
    ],
    "momios": {
-    "Carolina Hurricanes": 2.25,
-    "Montreal Canadiens": 2.5,
-    "Empate": 3.85
+    "Carolina Hurricanes": 1.8333,
+    "Montreal Canadiens": 2
    },
    "url": "https://sports.caliente.mx/es_MX/e/33463294/Carolina-Hurricanes-%40-Montreal-Canadiens"
   },
@@ -108,9 +101,8 @@
     "Los Angeles Kings"
    ],
    "momios": {
-    "Florida Panthers": 2.3,
-    "Los Angeles Kings": 2.5,
-    "Empate": 3.8
+    "Florida Panthers": 1.8333,
+    "Los Angeles Kings": 2
    },
    "url": "https://sports.caliente.mx/es_MX/e/33463295/Florida-Panthers-%40-Los-Angeles-Kings"
   },
@@ -122,9 +114,8 @@
     "New Jersey Devils"
    ],
    "momios": {
-    "Utah Mammoth": 2.6,
-    "New Jersey Devils": 2.2,
-    "Empate": 3.8
+    "Utah Mammoth": 2.1,
+    "New Jersey Devils": 1.75
    },
    "url": "https://sports.caliente.mx/es_MX/e/33463337/Utah-Mammoth-%40-New-Jersey-Devils"
   },
