@@ -1,71 +1,58 @@
 {
  "casa": "codere_mx",
- "capturado": "2026-10-05T03:21:48+00:00",
+ "capturado": "2026-10-06T01:18:21+00:00",
  "partidos": [
   {
-   "deporte": "americanfootball",
-   "inicio": "2026-10-06T00:15:00+00:00",
-   "equipos": [
-    "NO Saints",
-    "ATL Falcons"
-   ],
-   "momios": {
-    "NO Saints": 1.75,
-    "ATL Falcons": 2.05
-   },
-   "url": "https://apuestas.codere.mx/es_MX/e/13944113/NO-Saints-v-ATL-Falcons"
-  },
-  {
    "deporte": "icehockey_nhl",
-   "inicio": "2026-10-05T23:30:00+00:00",
+   "inicio": "2026-10-06T23:00:00+00:00",
    "equipos": [
-    "BOS Bruins",
+    "DET Red Wings",
     "OTT Senators"
    ],
    "momios": {
-    "BOS Bruins": 1.95,
-    "OTT Senators": 1.88
+    "DET Red Wings": 1.9,
+    "OTT Senators": 1.9
    },
-   "url": "https://apuestas.codere.mx/es_MX/e/14032522/BOS-Bruins-v-OTT-Senators"
+   "url": "https://apuestas.codere.mx/es_MX/e/14041985/DET-Red-Wings-v-OTT-Senators"
   },
   {
    "deporte": "icehockey_nhl",
-   "inicio": "2026-10-06T00:00:00+00:00",
+   "inicio": "2026-10-06T23:00:00+00:00",
    "equipos": [
-    "DAL Stars",
-    "SJ Sharks"
+    "BUF Sabres",
+    "MIN Wild"
    ],
    "momios": {
-    "DAL Stars": 1.62,
-    "SJ Sharks": 2.35
+    "BUF Sabres": 1.9,
+    "MIN Wild": 1.9
    },
-   "url": "https://apuestas.codere.mx/es_MX/e/14032582/DAL-Stars-v-SJ-Sharks"
+   "url": "https://apuestas.codere.mx/es_MX/e/14041986/BUF-Sabres-v-MIN-Wild"
   },
   {
    "deporte": "icehockey_nhl",
-   "inicio": "2026-10-05T23:00:00+00:00",
+   "inicio": "2026-10-06T23:00:00+00:00",
    "equipos": [
-    "TB Lightning",
-    "PHI Flyers"
+    "TOR Maple Leafs",
+    "NV Predators"
    ],
    "momios": {
-    "TB Lightning": 1.5,
-    "PHI Flyers": 2.6
+    "TOR Maple Leafs": 1.65,
+    "NV Predators": 2.25
    },
-   "url": "https://apuestas.codere.mx/es_MX/e/14032586/TB-Lightning-v-PHI-Flyers"
+   "url": "https://apuestas.codere.mx/es_MX/e/14041989/TOR-Maple-Leafs-v-NV-Predators"
   },
   {
    "deporte": "icehockey_nhl",
-   "inicio": "2026-10-05T23:30:00+00:00",
+   "inicio": "2026-10-06T23:00:00+00:00",
    "equipos": [
-    "PIT Penguins",
-    "WIN Jets"
+    "NJ Devils",
+    "UTA Mammoth"
    ],
    "momios": {
-    "PIT Penguins": 1.6,
-    "WIN Jets": 2.4
+    "NJ Devils": 1.8,
+    "UTA Mammoth": 2.05
    },
-   "url": "https://apuestas.codere.mx/es_MX/e/14032587/PIT-Penguins-v-WIN-Jets"
+   "url": "https://apuestas.codere.mx/es_MX/e/14041990/NJ-Devils-v-UTA-Mammoth"
   },
   {
    "deporte": "icehockey_nhl",
@@ -75,10 +62,23 @@
     "CAR Hurricanes"
    ],
    "momios": {
-    "MON Canadiens": 1.95,
-    "CAR Hurricanes": 1.88
+    "MON Canadiens": 2,
+    "CAR Hurricanes": 1.83
    },
    "url": "https://apuestas.codere.mx/es_MX/e/14041991/MON-Canadiens-v-CAR-Hurricanes"
+  },
+  {
+   "deporte": "icehockey_nhl",
+   "inicio": "2026-10-06T23:30:00+00:00",
+   "equipos": [
+    "NY Rangers",
+    "NY Islanders"
+   ],
+   "momios": {
+    "NY Rangers": 1.67,
+    "NY Islanders": 2.2
+   },
+   "url": "https://apuestas.codere.mx/es_MX/e/14041992/NY-Rangers-v-NY-Islanders"
   },
   {
    "deporte": "icehockey_nhl",
@@ -88,8 +88,8 @@
     "STL Blues"
    ],
    "momios": {
-    "CH Blackhawks": 1.95,
-    "STL Blues": 1.85
+    "CH Blackhawks": 2.05,
+    "STL Blues": 1.75
    },
    "url": "https://apuestas.codere.mx/es_MX/e/14041993/CH-Blackhawks-v-STL-Blues"
   },
@@ -101,10 +101,36 @@
     "FLO Panthers"
    ],
    "momios": {
-    "LA Kings": 2,
-    "FLO Panthers": 1.8
+    "LA Kings": 1.95,
+    "FLO Panthers": 1.85
    },
    "url": "https://apuestas.codere.mx/es_MX/e/14050546/LA-Kings-v-FLO-Panthers"
+  },
+  {
+   "deporte": "icehockey_nhl",
+   "inicio": "2026-10-07T01:40:00+00:00",
+   "equipos": [
+    "SEA Kraken",
+    "VG Knights"
+   ],
+   "momios": {
+    "SEA Kraken": 2.35,
+    "VG Knights": 1.6
+   },
+   "url": "https://apuestas.codere.mx/es_MX/e/14051578/SEA-Kraken-v-VG-Knights"
+  },
+  {
+   "deporte": "icehockey_nhl",
+   "inicio": "2026-10-07T23:30:00+00:00",
+   "equipos": [
+    "WSH Capitals",
+    "PIT Penguins"
+   ],
+   "momios": {
+    "WSH Capitals": 1.6,
+    "PIT Penguins": 2.35
+   },
+   "url": "https://apuestas.codere.mx/es_MX/e/14051691/WSH-Capitals-v-PIT-Penguins"
   }
  ]
 }
