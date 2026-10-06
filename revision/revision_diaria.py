@@ -172,10 +172,10 @@ def metricas(base: Path):
     print(_re.sub(r"</?\w+>", "", avisos.texto_resumen(s)))
     desde_avisos = leer("avisos_desde", 0)
     sin_aviso = con.execute("""SELECT COUNT(*) FROM apuestas a JOIN estrategias e ON e.nombre = a.estrategia
-                               LEFT JOIN avisos v ON v.apuesta_id = a.id WHERE a.id > ? AND e.rol = 'mexico'
+                               LEFT JOIN avisos v ON v.apuesta_id = a.id WHERE a.id > ? AND e.rol = 'principal'
                                AND v.apuesta_id IS NULL""", (desde_avisos,)).fetchone()[0]
     print(f"conectado: {s['conectado']} · última lectura de Telegram: {s['ultima_lectura']} · "
-          f"apuestas de México real sin alerta: {sin_aviso}")
+          f"apuestas de la Principal sin alerta: {sin_aviso}")
     for c in cfg["casas_mexico"]:
         if c.get("cuenta"):
             ultimo_barrido = con.execute("SELECT MAX(capturado) FROM senales WHERE casa = ?", (c["clave"],)).fetchone()[0]
@@ -206,7 +206,7 @@ def metricas(base: Path):
     if s["fallas"]:
         alertas.append(f"Telegram: {s['fallas']} fallas de envío acumuladas")
     if sin_aviso:
-        alertas.append(f"Telegram: {sin_aviso} apuestas de México real no se avisaron")
+        alertas.append(f"Telegram: {sin_aviso} apuestas de la Principal no se avisaron")
     if s["conectado"] and s["ultima_lectura"] and ahora - base_datos.a_fecha(s["ultima_lectura"]) > timedelta(minutes=45):
         alertas.append(f"Telegram: no se leen respuestas desde {s['ultima_lectura']}")
     print("ninguna" if not alertas else "\n".join("  " + a for a in alertas))

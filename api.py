@@ -92,11 +92,15 @@ def descargar_momios(con, config: dict, deporte: str, liga: str, motivo: str) ->
     """Baja los momios de una liga y los guarda. Devuelve (momento de captura, id de consumo, costo)."""
     eventos, restantes, costo = llamar(
         f"/sports/{deporte}/odds",
-        {"regions": config["region"], "markets": ",".join(config["mercados"]),
-         "oddsFormat": "decimal", "dateFormat": "iso"},
+        # Solo Pinnacle (precio justo) y las casas permitidas en México que vienen en los datos (Betsson): mismo costo
+        {**({"bookmakers": config["bookmakers"]} if config.get("bookmakers") else {"regions": config["region"]}),
+         "markets": ",".join(config["mercados"]), "oddsFormat": "decimal", "dateFormat": "iso"},
         config["api_key"],
     )
     capturado = iso(ahora())
+    # Casas que en México pagan distinto que su versión internacional (ej. Betsson México ~2.3% menos): se guarda
+    # el precio que de verdad se podría apostar desde México
+    ajustes = {c["clave"]: 1 + c["ajuste_precio"] for c in config.get("casas_mexico", []) if c.get("ajuste_precio")}
     for ev in eventos:
         con.execute(
             """INSERT INTO eventos (id, deporte, liga, local, visitante, inicio)
@@ -114,7 +118,8 @@ def descargar_momios(con, config: dict, deporte: str, liga: str, motivo: str) ->
                                                capturado, actualizado_casa)
                            VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
                         (ev["id"], casa["key"], mercado["key"], opcion["name"], opcion.get("point"),
-                         opcion["price"], capturado, iso(a_fecha(actualizado)) if actualizado else None),
+                         round(max(1.01, opcion["price"] * ajustes.get(casa["key"], 1.0)), 3), capturado,
+                         iso(a_fecha(actualizado)) if actualizado else None),
                     )
     id_consumo = registrar_consumo(con, "odds", motivo, deporte, costo, restantes)
     con.execute("UPDATE consumo_api SET partidos = ? WHERE id = ?", (len(eventos), id_consumo))

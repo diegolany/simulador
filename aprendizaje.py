@@ -149,7 +149,9 @@ def aprendizaje_diario(con, config: dict) -> None:
     mente = cerebro.obtener(con, config)
     firmes = [e for e in mente.resumen()["efectos"] if e["n"] >= 10]
     texto = (f"Cerebro: de cada 1% de valor que veo, el cierre confirma {mente.factor:.2f}% "
-             f"(arrancó en {mente.previo:.2f}% por la prueba histórica; {mente.n_factor} apuestas medidas).")
+             f"(arrancó en {mente.previo:.2f}% " + (f"por lo que aprendió antes de la Estrategia México; "
+                                                   if mente.heredado else "por la prueba histórica; ")
+             + f"{mente.n_factor} apuestas medidas en casas mexicanas).")
     if firmes:
         texto += " Lo que más pesa ya con datos: " + "; ".join(
             f"{e['dimension'].lower()} {e['nivel']} {e['efecto'] * 100:+.1f} pts ({e['n']} apuestas)" for e in firmes[:3]) + "."

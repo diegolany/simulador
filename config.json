@@ -1,6 +1,8 @@
 {
   "api_key": "",
   "region": "eu",
+  "bookmakers": "pinnacle,betsson",
+  "apuestas_draftkings": false,
   "mercados": ["h2h"],
   "casa_referencia": "pinnacle",
   "casas_excluidas": ["betfair_ex_eu", "matchbook"],
@@ -52,7 +54,8 @@
      "lectura": true, "cuenta": false, "permiso": "el de Codere", "medicion": "barrido"},
     {"clave": "betsson", "nombre": "Betsson", "url": "https://www.betsson.mx", "web": "https://www.betsson.mx",
      "lectura": true, "cuenta": false, "permiso": "DGG/723/97 · DGJS/DCRCA/0688/2021", "medicion": "api",
-     "nota": "Precio de Betsson internacional (viene gratis en los datos); falta confirmar que betsson.mx pague igual"},
+     "ajuste_precio": -0.023, "verificada": true,
+     "nota": "Betsson México paga ~2.3% menos que la internacional (comparado el 5 oct en 6 partidos de NHL: comisión 7.6% contra 5.2%). El bot ya lo descuenta"},
     {"clave": "novibet_mx", "nombre": "Novibet", "url": "https://www.novibet.mx", "lectura": false, "cuenta": false,
      "permiso": "DGG/723/97 · DGJS/DCRCA/1121/2020", "medicion": "pendiente"},
     {"clave": "betcris_mx", "nombre": "Betcris", "url": "https://www.betcris.mx", "lectura": false, "cuenta": false,

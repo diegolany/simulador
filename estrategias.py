@@ -36,9 +36,11 @@ PARAMETROS_BASE = {
 MARGEN_EFICIENTE = 0.025
 INTERCAMBIOS = ("betfair_ex_eu", "matchbook")
 
+# Estrategia México (desde el 6 de octubre de 2026): todas apuestan solo en casas permitidas en México
+# (config casas_mexico; motor.inicializar les pone la lista). Lo de casas europeas quedó archivado.
 ESTRATEGIAS_INICIALES = [
     ("Principal", "valor", "principal",
-     "Valor de 1.5% o más contra Pinnacle, momios 1.30 a 5.00, hasta 48 h antes",
+     "Valor de 1.5% o más contra Pinnacle en casas permitidas en México, momios 1.30 a 5.00, hasta 48 h antes",
      {"umbral": 0.015}),
     ("Valor estricto", "valor", "retadora",
      "Solo valor de 4% o más",
@@ -59,32 +61,12 @@ ESTRATEGIAS_INICIALES = [
      "Exige más valor donde Pinnacle cobra más margen (mercado menos eficiente): 1.5% más 1 punto por cada punto de "
      "margen arriba de 2.5%. En pruebas históricas rindió +6.2% (t = 3.1)",
      {"umbral": 0.015, "umbral_margen": 1.0}),
-    ("Consenso sharp", "valor", "retadora",
-     "Precio justo = mitad Pinnacle y mitad casas de intercambio (Betfair, Matchbook): una referencia con menos ruido",
-     {"referencia": "consenso"}),
     ("Sin cerebro", "valor", "retadora",
      "Reglas de la Principal con el monto según el valor a simple vista, sin el cerebro: mide si el cerebro ayuda",
      {"umbral": 0.015, "cerebro": False}),
-    # Lo más parecido a la vida real: las reglas de la Principal, pero solo en casas con licencia en México donde
-    # Diego puede abrir cuenta (sus momios llegan por los barridos manuales). Es la cartera que pasaría a dinero real.
-    ("México real", "valor", "mexico",
-     "Reglas de la Principal solo en casas mexicanas con licencia (Caliente, Codere): lo que se podría apostar de verdad",
-     {"umbral": 0.015, "casas_permitidas": ["caliente", "codere_mx", "strendus", "betano_mx", "playdoit", "draftea"]}),
-    # Experimentos con momios gratuitos de DraftKings: apuestan aunque la diferencia con el precio justo sea
-    # mínima, con monto fijo pequeño, para aprender rápido qué forma de apostar ahí deja dinero.
-    # Solo informan: nunca cambian las reglas de la Principal.
-    ("DK casi justo", "gratis", "experimento",
-     "DraftKings a menos de 1% del precio justo de Pinnacle; mide si lo 'casi' también deja dinero",
-     {"umbral": -0.01, "fijo": 0.005}),
-    ("DK favoritos", "gratis", "experimento",
-     "Favoritos (1.25 a 1.80) en DraftKings a precio casi justo; busca acierto alto",
-     {"umbral": -0.01, "momio_min": 1.25, "momio_max": 1.80, "fijo": 0.01}),
-    ("DK sigue el dinero", "gratis", "experimento",
-     "El lado cuyo momio en DraftKings bajó 5% o más desde la apertura (entró dinero), a precio casi justo",
-     {"umbral": -0.015, "modo": "movimiento", "movimiento_min": 0.05, "fijo": 0.005}),
-    ("DK sigue a Pinnacle", "gratis", "experimento",
-     "Pinnacle subió 2 puntos o más la probabilidad de un lado y DraftKings aún no termina de ajustar",
-     {"umbral": -0.01, "modo": "pinnacle_mueve", "movimiento_min": 0.02, "fijo": 0.005}),
+    ("Solo mejorados", "valor", "retadora",
+     "Solo los momios mejorados de Caliente y Codere con valor de 1.5% o más (monto máximo $500)",
+     {"umbral": 0.015, "solo_mejorados": True}),
     ("Apostador casual", "favorito", "control",
      "Control: 1% fijo al favorito, al momio promedio de las casas, sin buscar valor",
      {"fijo": 0.01, "horas_max": 24}),
@@ -283,12 +265,11 @@ def _anotar_senales(con, config: dict, ev, precios: list, justas: dict, margen: 
     f = config["fantasmas"]
     mexicanas = {c["clave"] for c in config["casas_mexico"]}
     for casa, sel, momio in precios:
-        if sel not in justas:
-            continue
+        if sel not in justas or casa not in mexicanas:
+            continue  # solo se mide lo que se puede apostar desde México
         v = valor_esperado(justas[sel], momio)
-        # De las casas mexicanas se guarda todo (cobran más comisión): así se mide si alguna le gana al mercado
-        minimo = -0.10 if casa in mexicanas else f["valor_minimo"]
-        if minimo <= v <= config["valor_sospechoso"] and momio <= f["momio_maximo"]:
+        # Se guarda casi todo (cobran más comisión): así se mide qué tan seguido alguna le gana al mercado
+        if -0.10 <= v <= config["valor_sospechoso"] and momio <= f["momio_maximo"]:
             con.execute("""INSERT OR IGNORE INTO senales (evento_id, deporte, liga, casa, seleccion, momio, prob_justa,
                                                           valor, margen_ref, capturado, inicio)
                            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",

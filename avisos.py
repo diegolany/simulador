@@ -1,4 +1,4 @@
-"""Avisos por Telegram: cada apuesta nueva de "México real" (solo casas permitidas en México) le llega a Diego.
+"""Avisos por Telegram: cada apuesta nueva de la Principal (solo casas permitidas en México) le llega a Diego.
 
 Diego la hace a mano en la app de la casa (las casas no permiten apostar con bots) y contesta con un botón:
 ✅ Caliente / ✅ Codere / ❌ No estaba el momio / ⏭️ Paso. Las respuestas se leen en el siguiente ciclo (cada 5-15 min),
@@ -21,7 +21,7 @@ from datetime import datetime, timedelta, timezone
 import externos
 from base_datos import a_fecha, ahora, anotar, guardar_estado, iso, leer_estado
 
-ROLES = ("mexico",)  # solo lo que se puede apostar desde México (la Principal apuesta en casas europeas)
+ROLES = ("principal",)  # la Principal ya solo apuesta en casas permitidas en México
 MAX_POR_CICLO = 8
 RESPUESTAS = {"h": ("hecha", "✅ Apostaste"), "n": ("no_habia", "❌ No cuadró el momio"), "p": ("paso", "⏭️ No apostaste")}
 fallas = 0  # llamadas a Telegram que fallaron en este ciclo
@@ -148,9 +148,9 @@ def _conectar(con, mensaje) -> None:
     chat = mensaje["chat"]["id"]
     guardar_estado(con, "telegram_chat", chat)
     guardar_estado(con, "avisos_desde", con.execute("SELECT COALESCE(MAX(id), 0) FROM apuestas").fetchone()[0])
-    anotar(con, "sistema", "Telegram conectado: desde ahora las apuestas de México real (casas permitidas en México) llegan al celular.")
+    anotar(con, "sistema", "Telegram conectado: desde ahora las apuestas de la Principal (casas permitidas en México) llegan al celular.")
     _llamar("setMyCommands", {"commands": [{"command": "resumen", "description": "Estadísticas de las alertas"}]})
-    _enviar(con, "✅ <b>Conectado.</b>\nTe mando aquí cada apuesta nueva de México real (solo casas permitidas en México).\n\n"
+    _enviar(con, "✅ <b>Conectado.</b>\nTe mando aquí cada apuesta nueva de la Principal (solo casas permitidas en México).\n\n"
                  "1. Ábrela en Caliente o Codere y revisa el momio.\n"
                  "2. Si paga lo mínimo o más, hazla con el monto sugerido.\n"
                  "3. Pícale la casa donde la hiciste, ❌ No estaba o ⏭️ Paso.\n\n"
@@ -291,7 +291,7 @@ def _precios_mexico(con, config) -> dict:
 
 
 def _recomendar(a, cuentas, precios, config) -> tuple:
-    """La casa mexicana donde hacer la apuesta: la de la propia apuesta si es de México real (un momio mejorado es de
+    """La casa mexicana donde hacer la apuesta: la de la propia apuesta (un momio mejorado es de
     su casa base); si no, la que pagó más en el último barrido; sin lectura, la primera con cuenta (Caliente abre la
     app directo)."""
     base = next((c.get("base", c["clave"]) for c in config["casas_mexico"] if c["clave"] == a["casa"]), a["casa"])

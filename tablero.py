@@ -304,7 +304,7 @@ def plan_real(con, config: dict) -> dict:
                       "con_valor_semana": semana,
                       "apta": con_valor[0] >= m["apta_min_con_valor"] and (con_valor[1] or 0) > 0})
     mexico_semana = con.execute("""SELECT COUNT(*) FROM apuestas a JOIN estrategias e ON e.nombre = a.estrategia
-                                   WHERE e.rol = 'mexico' AND a.colocada >= ?""", (hace_semana,)).fetchone()[0]
+                                   WHERE e.rol = 'principal' AND a.colocada >= ?""", (hace_semana,)).fetchone()[0]
     return {"casas": casas, "mexico_semana": mexico_semana, "reglas": m}
 
 

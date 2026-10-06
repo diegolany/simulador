@@ -21,6 +21,7 @@ from pathlib import Path
 
 import aprendizaje
 import avisos
+import cerebro
 import diario
 import estrategias
 import estudio
@@ -52,7 +53,48 @@ def _seguro(descripcion: str, funcion, *args, **kwargs):
         return None
 
 
+def migrar_a_mexico(con, config: dict) -> None:
+    """Una vez (6 oct 2026, decisión de Diego): todo el simulador pasa a la estrategia México. Se borra lo de casas
+    que no se pueden usar en México, pero la inteligencia se queda: el cerebro hereda lo aprendido (factor de
+    realismo y mapa de ventajas), el laboratorio conserva sus reglas y variantes, y el conocimiento de ligas sigue.
+    Lo que arranca de cero son los resultados: banca nueva de $100,000 y apuestas medidas solo en casas mexicanas."""
+    if leer_estado(con, "estrategia_mexico"):
+        return
+    mente = cerebro.Cerebro(con, config)  # lo aprendido hasta hoy, antes de borrar los datos de donde salió
+    guardar_estado(con, "cerebro_herencia", mente.herencia())
+    mexicanas = [c["clave"] for c in config["casas_mexico"]]
+    marcas = ",".join("?" * len(mexicanas))
+    n = con.execute("SELECT COUNT(*) FROM apuestas").fetchone()[0]
+    con.execute("DELETE FROM apuestas")
+    con.execute(f"DELETE FROM senales WHERE casa NOT IN ({marcas})", mexicanas)
+    con.execute("DELETE FROM momios WHERE casa NOT IN ('pinnacle', 'betsson', 'draftkings')")
+    # Los precios de Betsson ya guardados eran de la versión internacional: se llevan a lo que paga Betsson México
+    for c in config["casas_mexico"]:
+        if c.get("ajuste_precio"):
+            f = 1 + c["ajuste_precio"]
+            con.execute("UPDATE momios SET momio = ROUND(momio * ?, 3) WHERE casa = ?", (f, c["clave"]))
+            con.execute("""UPDATE senales SET momio = ROUND(momio * ?, 3), valor = prob_justa * momio * ? - 1,
+                           clv = CASE WHEN clv IS NULL THEN NULL ELSE (1 + clv) * ? - 1 END WHERE casa = ?""",
+                        (f, f, f, c["clave"]))
+    con.execute("DELETE FROM avisos")
+    # Estrategias que no tienen sentido en México: experimentos de DraftKings, la referencia con casas de intercambio
+    # (ya no se descargan), "México real" (ahora lo es la Principal) y las ya retiradas
+    con.execute("""DELETE FROM estrategias WHERE tipo = 'gratis' OR rol IN ('mexico', 'retirada')
+                   OR parametros LIKE '%"referencia": "consenso"%'""")
+    guardar_estado(con, "fecha_inicio", iso(ahora()))
+    guardar_estado(con, "ultima_revision", iso(ahora()))
+    guardar_estado(con, "avisos_desde", 0)
+    guardar_estado(con, "estrategia_mexico", iso(ahora()))
+    anotar(con, "inicio", f"Arranca la Estrategia México: solo se apuesta y se mide en casas permitidas en México "
+                          f"(Caliente, Codere, Betsson, Novibet y Betcris). Se borraron {n} apuestas de casas europeas. "
+                          f"El cerebro conserva lo aprendido (factor {mente.factor:.2f}, {round(mente.n_efectivo)} "
+                          f"mediciones) y sigue aprendiendo con datos mexicanos. Banca nueva de "
+                          f"${config['banca_inicial']:,.0f}.")
+    con.commit()
+
+
 def inicializar(con, config: dict) -> None:
+    migrar_a_mexico(con, config)
     estrategias.sembrar(con)
     if not leer_estado(con, "fecha_inicio"):
         guardar_estado(con, "fecha_inicio", iso(ahora()))
@@ -76,13 +118,14 @@ def inicializar(con, config: dict) -> None:
                               "solo ¼ de Kelly dejaba apuestas de $70 que no aportan nada. Ahora no se apuesta si la ventaja "
                               "estimada es menor a 0.5%, y el modo objetivo sigue cuidando el riesgo total.")
         guardar_estado(con, "medio_kelly", True)
-    # "México real" apuesta en todas las casas mexicanas configuradas (incluidos sus momios mejorados)
-    fila = con.execute("SELECT parametros FROM estrategias WHERE rol = 'mexico'").fetchone()
-    if fila:
-        p, casas = json.loads(fila[0]), [c["clave"] for c in config["casas_mexico"]]
-        if p.get("casas_permitidas") != casas:
-            con.execute("UPDATE estrategias SET parametros = ? WHERE rol = 'mexico'",
-                        (json.dumps({**p, "casas_permitidas": casas}),))
+    # Todas las estrategias apuestan solo en casas permitidas en México ("Solo mejorados": solo en esos momios)
+    casas = [c["clave"] for c in config["casas_mexico"]]
+    for nombre, parametros in con.execute("SELECT nombre, parametros FROM estrategias").fetchall():
+        p = json.loads(parametros)
+        lista = [c for c in casas if c.endswith("_mejorado")] if p.get("solo_mejorados") else casas
+        if p.get("casas_permitidas") != lista:
+            con.execute("UPDATE estrategias SET parametros = ? WHERE nombre = ?",
+                        (json.dumps({**p, "casas_permitidas": lista}), nombre))
     con.commit()
 
 
@@ -404,7 +447,10 @@ def _prometedoras(con, config: dict, mapa: dict) -> dict:
 
 
 def apuestas_gratuitas(con, config: dict, manual: bool = False) -> None:
-    """Momios gratuitos de DraftKings (ESPN) para la Principal y el laboratorio, cada `minutos_gratis` minutos."""
+    """Momios gratuitos de DraftKings (ESPN) para la Principal y el laboratorio, cada `minutos_gratis` minutos.
+    Apagado en la Estrategia México: DraftKings no opera en México (ESPN sigue dando marcadores y cierres)."""
+    if not config.get("apuestas_draftkings", True):
+        return
     ultima = leer_estado(con, "gratis_ultimo")
     if not manual and ultima and ahora() - a_fecha(ultima) < timedelta(minutes=config["minutos_gratis"]):
         return

@@ -23,6 +23,7 @@ DIMENSIONES = {"liga": "Liga", "casa": "Casa", "momio": "Tipo de momio", "antici
                "mercado": "Eficiencia del mercado", "popular": "Equipo popular"}
 TOPE_EFECTO = 0.04    # un solo rasgo no mueve la estimación más de 4 puntos
 TOPE_AJUSTE = 0.05    # la suma de rasgos tampoco más de 5 puntos
+MAX_HEREDADO = 150    # lo heredado pesa como máximo 150 mediciones: los datos nuevos siempre lo pueden corregir
 # Equipos con mucha afición: las casas comunes a veces los cobran caros (o los regalan) porque reciben más apuestas
 POPULARES = ("america", "guadalajara", "chivas", "cruz azul", "pumas", "unam", "monterrey", "tigres", "toluca",
              "real madrid", "barcelona", "atletico madrid", "manchester united", "manchester city", "liverpool",
@@ -116,22 +117,29 @@ class Cerebro:
             f["peso"] = 1 / tamanos[f["grupo"]]
         self.n = len(filas)
         self.n_efectivo = sum(f["peso"] for f in filas)
-        self.previo = factor_previo(con, config)
+        # Lo que aprendió antes de la Estrategia México (6 oct 2026) es su punto de partida: no empieza de cero
+        h = leer_estado(con, "cerebro_herencia") or {}
+        self.heredado = h.get("n_efectivo", 0)
+        self.previo = h.get("factor") or factor_previo(con, config)
 
-        # 1. Factor de realismo: el previo pesa como `fuerza_previa` mediciones; las medidas lo van corrigiendo
+        # 1. Factor de realismo: el previo pesa como `fuerza_previa` mediciones (más lo heredado, con tope para que
+        # los datos nuevos lo puedan corregir); las medidas lo van corrigiendo
         con_valor = [f for f in filas if f["valor"] >= 0.005]
         peso_total = sum(f["peso"] for f in con_valor)
         promedio = sum(f["peso"] * f["valor"] for f in con_valor) / peso_total if peso_total else 0.04
-        previo = c["fuerza_previa"] * promedio
+        previo = (c["fuerza_previa"] + min(h.get("n_factor", 0), MAX_HEREDADO)) * promedio
         self.n_factor = round(peso_total)
         self.factor = max(0.05, min(1.2, (sum(f["peso"] * f["clv"] for f in con_valor) + self.previo * previo)
                                     / (sum(f["peso"] * f["valor"] for f in con_valor) + previo)))
 
-        # 2. Mapa de ventaja: efectos aditivos por rasgo, ajustados uno a la vez hasta estabilizarse (ridge)
+        # 2. Mapa de ventaja: efectos aditivos por rasgo, ajustados uno a la vez hasta estabilizarse (ridge). Cada
+        # efecto se encoge hacia lo heredado (no hacia cero), con tanto peso como mediciones lo respaldaban
         suavizado = c["suavizado"]
-        self.efectos = {d: {} for d in DIMENSIONES}
+        efectos_h, pesos_h = h.get("efectos", {}), h.get("pesos", {})
+        self.efectos = {d: dict(efectos_h.get(d, {})) for d in DIMENSIONES}
         self.conteos = {d: {} for d in DIMENSIONES}
         pesos = {d: {} for d in DIMENSIONES}
+        self.pesos = pesos
         for f in filas:
             for d in DIMENSIONES:
                 nivel = f["rasgos"][d]
@@ -148,8 +156,19 @@ class Cerebro:
                         continue
                     otros = sum(self.efectos[o].get(f["rasgos"][o], 0.0) for o in DIMENSIONES if o != d)
                     sumas[nivel] = sumas.get(nivel, 0.0) + f["peso"] * (residuo - otros)
-                self.efectos[d] = {nivel: _limitar(s / (pesos[d][nivel] + suavizado), TOPE_EFECTO)
-                                   for nivel, s in sumas.items()}
+                for nivel, s in sumas.items():
+                    base = efectos_h.get(d, {}).get(nivel, 0.0)
+                    fuerza = suavizado + min(pesos_h.get(d, {}).get(nivel, 0.0), MAX_HEREDADO)
+                    self.efectos[d][nivel] = _limitar((s + fuerza * base) / (pesos[d][nivel] + fuerza), TOPE_EFECTO)
+
+    def herencia(self) -> dict:
+        """Lo aprendido, para guardarlo y que el cerebro siga desde aquí aunque cambien los datos."""
+        return {"factor": self.factor, "n_factor": self.n_factor + self.heredado_factor(),
+                "n_efectivo": round(self.n_efectivo + self.heredado), "efectos": self.efectos,
+                "pesos": {d: {nivel: p for nivel, p in niveles.items()} for d, niveles in self.pesos.items()}}
+
+    def heredado_factor(self) -> float:
+        return 0.0 if not self.heredado else min(self.heredado, MAX_HEREDADO)
 
     def estimar(self, valor: float, r: dict) -> tuple[float, list[tuple[str, str, float]]]:
         """(ventaja real estimada, ajustes que la explican) para una apuesta con ese valor y esos rasgos."""
@@ -163,7 +182,7 @@ class Cerebro:
                    for d in DIMENSIONES for nivel, e in self.efectos[d].items()]
         efectos.sort(key=lambda x: -abs(x["efecto"]))
         return {"factor": self.factor, "previo": self.previo, "n": self.n, "n_efectivo": round(self.n_efectivo),
-                "n_factor": self.n_factor, "efectos": efectos[:20]}
+                "n_factor": self.n_factor, "heredado": self.heredado, "efectos": efectos[:20]}
 
 
 def explicar(ajustes: list[tuple[str, str, float]], limite: int = 2) -> str:
