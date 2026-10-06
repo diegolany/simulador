@@ -61,6 +61,9 @@ async (paginas, maxPartidos = 30) => {
     for (const tr of doc.querySelectorAll('tr')) {  // fútbol: local, empate y visitante en una fila
       const bs = [...tr.querySelectorAll(':scope > td.seln button.price')];
       if (bs.length !== 3 || bs.some(enVivo)) continue;
+      // En hockey la fila de 3 es "tiempo regular" (con empate): si el partido ya tiene "a ganar" se queda ese,
+      // que es el mismo mercado que Pinnacle
+      if (partidos[idEvento(bs[0])]) continue;
       const nombres = bs.map(b => b.querySelector('.seln-name')?.textContent.trim());
       partidos[idEvento(bs[0])] = {
         equipos: [nombres[0], nombres[2]], inicio: hora(tr),

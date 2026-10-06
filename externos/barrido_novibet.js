@@ -3,7 +3,7 @@
 // con final = true devuelve todo en el formato de barrido.js:
 //   {"p": [[deporte, local, visitante, inicio UTC, momio1, empate | null, momio2, enlace | null], ...], "m": []}
 // Formatos que muestra (momios americanos, hora de México GMT-6):
-//   EE. UU.:  Local / vs / Visitante / "mar 17:00" / Ganador / momio1 / momio2
+//   EE. UU.:  Equipo1 / vs (o @) / Equipo2 / "mar 17:00" / Ganador / momio1 / momio2
 //   Fútbol:   Local / "vie 19:00" / Visitante / 1 / momio / X / momio / 2 / momio
 async (deporte, final = false) => {
   const DIAS = { dom: 0, lun: 1, mar: 2, 'mié': 3, mie: 3, jue: 4, vie: 5, 'sáb': 6, sab: 6 };
@@ -22,7 +22,7 @@ async (deporte, final = false) => {
   const lineas = document.body.innerText.split('\n').map(s => s.trim()).filter(Boolean);
   const nuevos = [];
   for (let i = 1; i < lineas.length - 8; i++) {
-    if (lineas[i] === 'vs' && HORA.test(lineas[i + 2] || '')) {  // deportes de EE. UU.
+    if ((lineas[i] === 'vs' || lineas[i] === '@') && HORA.test(lineas[i + 2] || '')) {  // deportes de EE. UU. ("@": visitante primero)
       const k = lineas.indexOf('Ganador', i + 3);
       if (k < 0 || k > i + 4 || !AMER.test(lineas[k + 1]) || !AMER.test(lineas[k + 2])) continue;
       nuevos.push([deporte, lineas[i - 1], lineas[i + 1], inicio(lineas[i + 2]), decimal(lineas[k + 1]), null, decimal(lineas[k + 2]), null]);
