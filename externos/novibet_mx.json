@@ -1,0 +1,136 @@
+{
+ "casa": "novibet_mx",
+ "capturado": "2026-10-06T02:33:29+00:00",
+ "partidos": [
+  {
+   "deporte": "icehockey_nhl",
+   "inicio": "2026-10-06T23:00:00+00:00",
+   "equipos": [
+    "BUF Sabres",
+    "MIN Wild"
+   ],
+   "momios": {
+    "BUF Sabres": 1.9009,
+    "MIN Wild": 1.9009
+   },
+   "url": null
+  },
+  {
+   "deporte": "icehockey_nhl",
+   "inicio": "2026-10-06T23:00:00+00:00",
+   "equipos": [
+    "DET Red Wings",
+    "OTT Senators"
+   ],
+   "momios": {
+    "DET Red Wings": 1.9009,
+    "OTT Senators": 1.9009
+   },
+   "url": null
+  },
+  {
+   "deporte": "icehockey_nhl",
+   "inicio": "2026-10-06T23:00:00+00:00",
+   "equipos": [
+    "MTL Canadiens",
+    "CAR Hurricanes"
+   ],
+   "momios": {
+    "MTL Canadiens": 2,
+    "CAR Hurricanes": 1.8197
+   },
+   "url": null
+  },
+  {
+   "deporte": "icehockey_nhl",
+   "inicio": "2026-10-06T23:05:00+00:00",
+   "equipos": [
+    "NJ Devils",
+    "UTA Mammoth"
+   ],
+   "momios": {
+    "NJ Devils": 1.7576,
+    "UTA Mammoth": 2.08
+   },
+   "url": null
+  },
+  {
+   "deporte": "icehockey_nhl",
+   "inicio": "2026-10-06T23:05:00+00:00",
+   "equipos": [
+    "TOR Maple Leafs",
+    "NAS Predators"
+   ],
+   "momios": {
+    "TOR Maple Leafs": 1.6494,
+    "NAS Predators": 2.25
+   },
+   "url": null
+  },
+  {
+   "deporte": "icehockey_nhl",
+   "inicio": "2026-10-06T23:30:00+00:00",
+   "equipos": [
+    "NY Rangers",
+    "NY Islanders"
+   ],
+   "momios": {
+    "NY Rangers": 1.6711,
+    "NY Islanders": 2.22
+   },
+   "url": null
+  },
+  {
+   "deporte": "icehockey_nhl",
+   "inicio": "2026-10-07T00:00:00+00:00",
+   "equipos": [
+    "CHI Blackhawks",
+    "STL Blues"
+   ],
+   "momios": {
+    "CHI Blackhawks": 2.08,
+    "STL Blues": 1.7576
+   },
+   "url": null
+  },
+  {
+   "deporte": "icehockey_nhl",
+   "inicio": "2026-10-07T01:40:00+00:00",
+   "equipos": [
+    "SEA Kraken",
+    "VGS Golden Knights"
+   ],
+   "momios": {
+    "SEA Kraken": 2.35,
+    "VGS Golden Knights": 1.5988
+   },
+   "url": null
+  },
+  {
+   "deporte": "icehockey_nhl",
+   "inicio": "2026-10-07T02:00:00+00:00",
+   "equipos": [
+    "LA Kings",
+    "FLO Panthers"
+   ],
+   "momios": {
+    "LA Kings": 1.9709,
+    "FLO Panthers": 1.8403
+   },
+   "url": null
+  },
+  {
+   "deporte": "icehockey_nhl",
+   "inicio": "2026-10-07T23:30:00+00:00",
+   "equipos": [
+    "WAS Capitals",
+    "PIT Penguins"
+   ],
+   "momios": {
+    "WAS Capitals": 1.5917,
+    "PIT Penguins": 2.32
+   },
+   "url": null
+  }
+ ]
+}
