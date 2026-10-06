@@ -488,11 +488,14 @@ def apostar_externo(con, config: dict, mapa: dict, capturado: str, nota: str) ->
     def precio(ev):
         p = mapa.get(ev["id"])
         return (p["casa"], p["precios"], {}) if p else None
-    return _apostar_con_precios(con, config, precio, minutos, nota, config["valor_sospechoso"], False, set(mapa))
+    # Para medir, cualquier foto de Pinnacle del día sirve (lo que califica al precio es el CLV contra el cierre);
+    # para apostar se sigue pidiendo una foto de menos de una hora
+    return _apostar_con_precios(con, config, precio, minutos, nota, config["valor_sospechoso"], False, set(mapa),
+                                config["mexico"]["horas_referencia_medicion"])
 
 
 def _apostar_con_precios(con, config: dict, obtener_precio, minutos: float, nota: str, tope_valor: float,
-                         con_experimentos: bool, eventos: set | None = None) -> dict:
+                         con_experimentos: bool, eventos: set | None = None, horas_referencia: float | None = None) -> dict:
     """Compara el momio de una casa externa (obtener_precio(evento) -> (casa, precios, apertura)) contra el último
     precio justo de Pinnacle ya descargado y deja que cada estrategia apueste con sus reglas."""
     tipos = ("valor", "gratis") if con_experimentos else ("valor",)  # gratis = experimentos DraftKings
@@ -511,7 +514,7 @@ def _apostar_con_precios(con, config: dict, obtener_precio, minutos: float, nota
            GROUP BY e.id""",
         (referencia, iso(momento + timedelta(minutes=10)),
          iso(momento + timedelta(hours=max(e["p"]["horas_max"] for e in estrategias))),
-         iso(momento - timedelta(hours=config["max_horas_referencia"])))).fetchall()
+         iso(momento - timedelta(hours=horas_referencia or config["max_horas_referencia"])))).fetchall()
     ya_apostadas = {(f[0], f[1]) for f in con.execute("SELECT estrategia, evento_id FROM apuestas WHERE inicio > ?",
                                                       (iso(momento),))}
     colocadas, ctx = {}, None

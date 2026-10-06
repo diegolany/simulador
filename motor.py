@@ -31,6 +31,7 @@ import tablero
 from api import (CARPETA, ErrorAPI, cargar_config, creditos_hoy, deportes_activos, descargar_momios,
                  descargar_resultados, dias_restantes, proximos_inicios)
 from base_datos import a_fecha, ahora, anotar, conectar, guardar_estado, iso, leer_estado, podar
+from momios import probabilidades_justas
 
 PUERTO = 8765
 URL = f"http://127.0.0.1:{PUERTO}"
@@ -353,21 +354,18 @@ def procesar_externos(con, config: dict, activos: dict, restantes: int) -> int:
         if not externos.reciente(datos):
             anotar(con, "sistema", f"{nombre}: el archivo de momios es de hace más de 6 h; ya no son precios reales y no se usó.")
             continue
-        # Primero, precio justo fresco (y la lista de partidos) de las ligas con partidos en las próximas 48 h
-        limite = iso(ahora() + timedelta(hours=48))
-        ligas = sorted({p["deporte"] for p in datos.get("partidos", [])
-                        if p.get("inicio") and iso(ahora()) < p["inicio"] <= limite and p["deporte"] in activos})
-        usados = 0
-        for deporte in ligas:
-            ultima = _ultima_descarga(con, deporte)
-            fresca = ultima and ahora() - ultima < timedelta(minutes=45)
-            # Por ahora los créditos son solo para calibrar la simulación: el barrido usa la foto de Pinnacle que haya
-            # (las estrategias de valor no apuestan si tiene más de 60 min)
-            if not fresca and config.get("barridos_con_creditos") and \
-                    restantes - gastado - usados - config["reserva_creditos"] >= 1:
-                usados += apostar_con_captura(con, config, deporte, activos.get(deporte, deporte), "barrido")
-        gastado += usados
         mapa = externos.emparejar(con, datos)
+        # Crédito solo donde vale la pena: ligas donde algún precio mexicano queda cerca o arriba del justo de la
+        # última foto de Pinnacle (aunque sea vieja). Se confirma con una foto fresca, máximo unos créditos por barrido
+        m, usados = config["mexico"], 0
+        for deporte, mejor in sorted(_prometedoras(con, config, mapa).items(), key=lambda x: -x[1]):
+            ultima = _ultima_descarga(con, deporte)
+            if mejor < m["valor_para_confirmar"] or (ultima and ahora() - ultima < timedelta(minutes=45)):
+                continue
+            if gastado + usados >= m["max_creditos_por_barrido"] or restantes - gastado - usados - config["reserva_creditos"] < 1:
+                break
+            usados += apostar_con_captura(con, config, deporte, activos.get(deporte, deporte), "barrido")
+        gastado += usados
         if not mapa:
             anotar(con, "sistema", f"{nombre}: se leyeron {len(datos.get('partidos', []))} partidos, pero ninguno coincide "
                                    f"con los partidos que sigue el bot ({usados} créditos usados).")
@@ -385,6 +383,24 @@ def procesar_externos(con, config: dict, activos: dict, restantes: int) -> int:
                                   else "Ninguno cumplió las reglas, así que no aposté."))
         con.commit()
     return gastado
+
+
+def _prometedoras(con, config: dict, mapa: dict) -> dict:
+    """{deporte: mejor valor} de los precios de una casa mexicana contra la última foto de Pinnacle que haya."""
+    referencia, mejores = config["casa_referencia"], {}
+    for evento, v in mapa.items():
+        cap = con.execute("SELECT MAX(capturado) FROM momios WHERE evento_id = ? AND casa = ? AND mercado = 'h2h'",
+                          (evento, referencia)).fetchone()[0]
+        if not cap:
+            continue
+        ref = {r[0]: r[1] for r in con.execute("""SELECT seleccion, momio FROM momios WHERE evento_id = ? AND casa = ?
+                                                  AND mercado = 'h2h' AND capturado = ?""", (evento, referencia, cap))}
+        if len(ref) < 2 or set(ref) != set(v["precios"]):
+            continue
+        justas = dict(zip(ref, probabilidades_justas(list(ref.values()))))
+        mejor = max(justas[s] * v["precios"][s] - 1 for s in ref)
+        mejores[v["deporte"]] = max(mejor, mejores.get(v["deporte"], -1.0))
+    return mejores
 
 
 def apuestas_gratuitas(con, config: dict, manual: bool = False) -> None:

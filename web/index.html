@@ -424,44 +424,49 @@ footer { margin-top: 28px; color: var(--tenue); font-size: 12.5px; line-height: 
 
   <section data-panel="plan" hidden>
     <div class="tarjeta">
-      <p class="ayuda" style="margin:0"><b>Meta:</b> pasar a apuestas reales en casas con licencia en México. El bot encuentra la apuesta y te
-        avisa por Telegram con el momio mínimo y el monto; tú la haces en la app de la casa y respondes "la hice" o "no". El simulador sigue
-        corriendo a la par para comparar lo simulado contra lo real. Solo se avanza de fase cuando los datos lo confirman.</p>
+      <h3 style="margin:0 0 8px">🇲🇽 Estrategia México</h3>
+      <p class="ayuda" style="margin:0 0 8px"><b>Regla de oro:</b> solo cuenta lo que se puede apostar desde México, en casas con permiso de SEGOB:
+        <b>Caliente, Codere, Betsson, Novibet y Betcris</b>. Una apuesta medida en una casa europea no sirve para el dinero real, porque esas casas
+        pagan otros precios (las mexicanas cobran ~5–7% de comisión contra ~2–4% de las europeas).</p>
+      <ul class="ayuda" style="margin:0;padding-left:18px;line-height:1.7">
+        <li><b>Cómo se gana:</b> el precio de una casa mexicana paga más que el precio justo (Pinnacle sin comisión) y el cierre lo confirma (CLV positivo).</li>
+        <li><b>"México real"</b> es la estrategia que se llevará al dinero real: las reglas de la Principal, pero solo en las 5 casas permitidas.
+          Las alertas de Telegram salen solo de ahí.</li>
+        <li><b>La Principal</b> sigue como laboratorio del método (casas europeas): calibra el cerebro y la meta del 3%, pero no se apuesta en real.</li>
+        <li><b>Cómo se mide cada casa:</b> Betsson automático y gratis (viene en los datos); Caliente y Codere con barridos dos veces al día,
+          incluidos sus momios mejorados; Novibet y Betcris en cuanto tengan lector. Cada precio se califica contra el cierre del partido.</li>
+        <li><b>Créditos:</b> en cada barrido, máximo 3, y solo si algún precio mexicano se ve cerca del valor (para confirmarlo con un precio fresco).</li>
+      </ul>
     </div>
     <h3 class="seccion">Fases</h3>
     <div class="pila" id="plan-fases"></div>
+    <h3 class="seccion">Las 5 casas permitidas: ¿cuáles le ganan al mercado?</h3>
+    <div class="tarjeta">
+      <p class="ayuda">Una casa queda <b>apta</b> para dinero real cuando tiene 30 o más precios con valor (1.5% o más) medidos contra el cierre y, en
+        promedio, le ganan. Los momios mejorados se miden aparte porque tienen monto máximo bajo. Para un barrido extra dile a Claude: <b>"barrido México"</b>.</p>
+      <div class="tabla" id="plan-casas"></div>
+    </div>
     <h3 class="seccion">Alertas de Telegram: medición</h3>
     <div class="tarjeta">
-      <p class="ayuda">Cada apuesta de la Principal y de "México real" te llega al celular. Aquí se mide si los momios se consiguen de verdad, en qué
-        casa, qué tan rápido contestas y si el sistema de avisos funciona. En el chat del bot escribe <b>/resumen</b> para ver lo mismo.</p>
+      <p class="ayuda">Cada apuesta de "México real" te llega al celular con la casa, el momio mínimo y el monto. Aquí se mide si los momios se consiguen
+        de verdad, qué tan rápido contestas y si el sistema funciona. En el chat del bot escribe <b>/resumen</b> para ver lo mismo.</p>
       <div class="kpis" id="telegram-kpis"></div>
       <div class="tabla" id="telegram-casas" style="margin-top:12px"></div>
     </div>
-    <h3 class="seccion">Casas mexicanas: ¿cuáles le ganan al mercado?</h3>
+    <h3 class="seccion">Pendientes</h3>
     <div class="tarjeta">
-      <p class="ayuda">Cada barrido lee los momios de estas casas (sin iniciar sesión) y los compara contra el precio justo de Pinnacle. Cada precio queda
-        como apuesta fantasma y al empezar el partido se mide si le ganó al cierre. Una casa sirve para dinero real cuando sus precios con valor
-        (1.5% o más) le ganan al cierre de forma constante. Para hacer un barrido dile a Claude: <b>"barrido México"</b>.</p>
-      <div class="tabla" id="plan-casas"></div>
-    </div>
-    <h3 class="seccion">Bonos de bienvenida: cuándo convienen <span class="chica">(en pausa: por ahora no entran en la estrategia)</span></h3>
-    <div class="tarjeta" style="opacity:.6">
-      <p style="margin:0 0 6px">Un bono vale la pena si lo que cuesta liberarlo es menor que el bono. Antes de aceptarlo hay que leer: cuántas veces hay
-        que apostarlo (rollover), momio mínimo, plazo, qué apuestas cuentan y si hay tope de retiro.</p>
-      <p style="margin:0 0 6px"><b>Cuenta rápida:</b> costo de liberarlo ≈ total que hay que apostar × comisión de la casa (~5%). Ejemplo: bono de $1,000
-        con rollover 5× → hay que apostar $5,000 → cuesta ~$250 → <b>ganancia esperada ~$750</b>. Si para liberarlo se usan las apuestas de valor del bot,
-        el costo baja todavía más.</p>
-      <p class="chica" style="margin:0">Regla: no depositar más de lo que se puede perder, y no aceptar bonos con rollover alto o plazos cortos que obliguen a
-        apostar sin valor. Las casas revisan a quien solo busca bonos: se usan una vez y con apuestas normales.</p>
-    </div>
-    <h3 class="seccion">Tus pendientes</h3>
-    <div class="tarjeta">
-      <ol style="margin:0;padding-left:20px;line-height:1.8">
-        <li>✅ Permisos de SEGOB confirmados (Caliente, Codere, Playdoit, Draftea).</li>
-        <li>Abrir las cuentas tú mismo y verificar identidad (INE, comprobante): ✅ Caliente · ✅ Codere. Claude no abre cuentas ni maneja contraseñas.</li>
-        <li>✅ Bot de Telegram creado (@diego_apuestas_bot): las apuestas de práctica ya llegan al celular.</li>
-        <li>Bonos de bienvenida: en pausa por decisión tuya.</li>
+      <p style="margin:0 0 4px"><b>Tuyos</b></p>
+      <ol style="margin:0 0 10px;padding-left:20px;line-height:1.8">
+        <li>✅ Cuentas en Caliente y Codere · ✅ Telegram conectado · ✅ Permisos de SEGOB revisados.</li>
+        <li>Abrir cuenta en <b>Betsson México</b> cuando se confirme que paga igual que la internacional (es la que más se puede medir gratis).</li>
+        <li>Novibet y Betcris: solo si salen aptas en la medición.</li>
         <li>Revisar el tema de impuestos: las casas en México retienen ISR sobre los premios.</li>
+      </ol>
+      <p style="margin:0 0 4px"><b>De Claude</b></p>
+      <ol style="margin:0;padding-left:20px;line-height:1.8">
+        <li>Comparar momios de betsson.mx contra los de Betsson internacional.</li>
+        <li>Lectores para Novibet y Betcris (si sus páginas se pueden leer sin iniciar sesión).</li>
+        <li>Revisar cada mañana (10 a.m.) qué casas van aptas y si "México real" junta suficientes oportunidades.</li>
       </ol>
     </div>
   </section>
@@ -1066,48 +1071,58 @@ function planVista(d) {
   const p = d.plan, conf = d.riesgo?.confianza || {};
   if (!p) { $('#plan-fases').innerHTML = '<div class="vacio">Aparece en la siguiente vuelta del bot.</div>'; return; }
   const mx = (d.laboratorio || []).find(e => e.rol === 'mexico') || {};
-  const tg = d.telegram || {}, cuentas = p.casas.filter(c => c.cuenta).length;
+  const tg = d.telegram || {};
   telegramVista(tg);
-  const casaLista = p.casas.find(c => c.con_valor >= 100 && c.clv_con_valor > 0);
+  const aptas = p.casas.filter(c => c.apta), r = p.reglas || {};
+  const casa = clave => p.casas.find(c => c.clave === clave) || {};
+  const hoy = new Date().toISOString().slice(0, 10);
+  const estado = (desde, hasta) => hoy > hasta ? 'Terminada' : hoy >= desde ? 'En curso' : 'Pendiente';
+  const reciente = c => c.ultimo_barrido && Date.now() - new Date(c.ultimo_barrido) < 30 * 3.6e6;
   const req = (cumple, texto, detalle) => `<li style="margin:4px 0">${cumple ? '✅' : '⬜'} ${texto} <span class="chica">— ${detalle}</span></li>`;
-  const fase = (num, titulo, cuando, estado, requisitos, nota) => `<div class="tarjeta">
+  const fase = (num, titulo, cuando, est, requisitos, nota) => `<div class="tarjeta">
       <div class="fila" style="display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap"><b>Fase ${num}: ${titulo}</b>
-        <span class="chip ${estado === 'En curso' ? 'azul' : ''}">${estado} · ${cuando}</span></div>
+        <span class="chip ${est === 'En curso' ? 'azul' : est === 'Terminada' ? 'bueno' : ''}">${est} · ${cuando}</span></div>
       ${nota ? `<p class="chica" style="margin:6px 0">${nota}</p>` : ''}
       <ul style="list-style:none;padding:0;margin:8px 0 0">${requisitos.join('')}</ul></div>`;
+  const intentos = (tg.hechas || 0) + (tg.no_habia || 0), mxc = mx.confianza || {};
   $('#plan-fases').innerHTML = [
-    fase(1, 'Simulación', 'hasta el 29 de octubre', 'En curso', [
-      req((conf.p_ventaja ?? 0) >= 0.95, 'La Principal le gana al mercado con 95% de seguridad', `hoy ${pct(conf.p_ventaja, 0)}`),
-      req((conf.media ?? -1) >= 0.01, 'CLV de la Principal de +1% o más', `hoy ${spct(conf.media)} en ${conf.n || 0} apuestas medidas`),
-      req(!!casaLista, 'Al menos una casa mexicana con valor comprobado (100+ precios con valor medidos y CLV positivo)',
-        casaLista ? `${casaLista.nombre}` : `la que más lleva: ${Math.max(0, ...p.casas.map(c => c.con_valor || 0))} precios con valor medidos`),
-      req((mx.clv_n || 0) >= 30 && (mx.clv || 0) > 0, 'La cartera "México real" con 30+ apuestas medidas y CLV positivo',
+    fase(1, 'Medir las 5 casas permitidas', '6 al 12 de octubre', estado('2026-10-06', '2026-10-12'), [
+      req((casa('betsson').precios || 0) > 0, 'Betsson medida automáticamente (gratis)', `${(casa('betsson').precios || 0).toLocaleString('es-MX')} precios`),
+      req(reciente(casa('caliente')) && reciente(casa('codere_mx')), 'Caliente y Codere con barrido al día (incluye momios mejorados)',
+        `último: Caliente ${casa('caliente').ultimo_barrido ? fecha(casa('caliente').ultimo_barrido) : '—'} · Codere ${casa('codere_mx').ultimo_barrido ? fecha(casa('codere_mx').ultimo_barrido) : '—'}`),
+      req(casa('novibet_mx').lectura && casa('betcris_mx').lectura, 'Novibet y Betcris con lector', 'pendiente de Claude'),
+      req(!!casa('betsson').verificada, 'Betsson México comprobada igual a la internacional', 'Claude compara sus momios'),
+    ], 'Cada precio de estas casas queda guardado y se califica contra el cierre del partido.'),
+    fase(2, 'Calibrar "México real"', '13 al 22 de octubre', estado('2026-10-13', '2026-10-22'), [
+      req((mx.clv_n || 0) >= 30 && (mx.clv || 0) > 0, '"México real" con 30+ apuestas medidas y CLV positivo',
         `${mx.clv_n || 0} medidas${mx.clv != null ? `, CLV ${spct(mx.clv)}` : ''}`),
-    ], 'El simulador mide qué casas mexicanas dejan valor; la cartera "México real" apuesta solo ahí, como lo harías tú.'),
-    fase(2, 'Alertas de Telegram sin dinero', 'desde el 4 de octubre', tg.conectado ? 'En curso' : 'Pendiente', [
-      req(cuentas >= 2, 'Cuentas abiertas en 2–3 casas mexicanas', `${cuentas} abiertas`),
-      req(!!tg.conectado, 'Bot de Telegram conectado', tg.conectado ? '@diego_apuestas_bot' : 'pícale Iniciar a @diego_apuestas_bot'),
-      req((tg.hechas || 0) + (tg.no_habia || 0) >= 30 && (tg.tasa_conseguido ?? 0) >= 0.7,
-        'Al menos 70% de las alertas se consiguen al momio indicado (30+ intentos)',
-        `hoy ${pct(tg.tasa_conseguido, 0)} en ${(tg.hechas || 0) + (tg.no_habia || 0)} intentos`),
-    ], 'Te llegan las apuestas como si fueran reales y anotas si alcanzabas el precio. Sin dinero todavía.'),
-    fase(3, 'Dinero real, montos chicos', '≈ desde el 15 de noviembre', 'Pendiente', [
-      req(false, '$10,000–20,000 repartidos en 2–3 casas', 'con topes de pérdida por día y por semana'),
-      req(false, 'CLV real positivo después de 100+ apuestas', 'si sale negativo, pausa automática'),
-    ], 'El tablero suma una pestaña "Real": saldo por casa, resultados y comparación simulador contra real.'),
-    fase(4, 'Escalar', 'después', 'Pendiente', [
-      req(false, 'Subir montos poco a poco solo si el CLV real se sostiene', ''),
-      req(false, 'Si conviene, pagar más datos con el 15% de la ganancia', 'plan de 20,000 créditos ≈ $30 USD'),
-    ], ''),
+      req((p.mexico_semana || 0) >= (r.oportunidades_semana_min || 5), `Al menos ${r.oportunidades_semana_min || 5} oportunidades por semana`,
+        `${p.mexico_semana || 0} en los últimos 7 días`),
+      req(intentos >= 30 && (tg.tasa_conseguido ?? 0) >= 0.7, 'Las alertas se consiguen al momio indicado (70% en 30+ intentos)',
+        `hoy ${pct(tg.tasa_conseguido, 0)} en ${intentos} intentos`),
+    ], 'Con las ligas de regreso (Liga MX el 9, Europa el 17) se juntan las mediciones. Te llegan alertas de práctica, sin dinero.'),
+    fase(3, 'Decisión', '23 al 29 de octubre', estado('2026-10-23', '2026-10-29'), [
+      req(aptas.length > 0, 'Al menos una casa apta', aptas.length ? aptas.map(c => c.nombre).join(', ') : 'ninguna todavía'),
+      req((mxc.p_ventaja ?? 0) >= 0.9, '"México real" le gana al mercado con 90% de seguridad', `hoy ${pct(mxc.p_ventaja, 0)}`),
+      req((conf.p_ventaja ?? 0) >= 0.95, 'El método comprobado (la Principal con 95% de seguridad)', `hoy ${pct(conf.p_ventaja, 0)}`),
+    ], 'Si no se cumple, no se entra con dinero: se sigue midiendo y se decide con números, no a ojo.'),
+    fase(4, 'Dinero real, montos chicos', 'noviembre, si pasa la fase 3', 'Pendiente', [
+      req(false, '$10,000 repartidos solo en las casas aptas', 'topes de pérdida: 3% por día y 6% por semana'),
+      req(false, 'CLV real positivo después de 100 apuestas', 'si sale negativo, pausa automática'),
+    ], 'El modo Real del tablero compara lo apostado de verdad contra lo simulado.'),
   ].join('');
+  const comoSeMide = { api: 'Automático (gratis)', barrido: 'Barrido 2 veces al día', pendiente: 'Falta lector' };
   $('#plan-casas').innerHTML = tabla([
-    { t: 'Casa', v: c => `<b>${esc(c.nombre)}</b><div class="chica">${c.lectura ? 'el bot ya la puede leer' : 'falta su lector'}</div>` },
-    { t: 'Cuenta', v: c => c.cuenta ? '<span class="chip bueno">✓ Abierta</span>' : '<span class="chip">Sin abrir</span>' },
-    { t: 'Precios leídos', num: 1, v: c => `${(c.precios || 0).toLocaleString('es-MX')}<div class="chica">${c.medidos || 0} medidos</div>` },
-    { t: 'Con valor ≥1.5%', num: 1, v: c => `${c.con_valor || 0}<div class="chica">${c.clv_con_valor != null ? 'CLV ' + spct(c.clv_con_valor) : 'sin medir'}</div>` },
-    { t: 'Mejor valor visto', num: 1, v: c => c.mejor_valor != null ? conSigno(c.mejor_valor, spct(c.mejor_valor)) : '—' },
-    { t: 'Último barrido', num: 1, v: c => c.ultimo_barrido ? fecha(c.ultimo_barrido) : '—' },
-    { t: 'Bono de bienvenida', v: c => `<span class="chica">${esc(c.bono)}</span>` },
+    { t: 'Casa', v: c => `<b>${esc(c.nombre)}</b>` + (c.nota ? `<div class="chica">${esc(c.nota)}</div>` : '') },
+    { t: 'Permiso', v: c => `<span class="chica">${esc(c.permiso || '—')}</span>` },
+    { t: 'Cómo se mide', v: c => `<span class="chica">${comoSeMide[c.medicion] || '—'}</span>` },
+    { t: 'Precios medidos', num: 1, v: c => `${(c.medidos || 0).toLocaleString('es-MX')}<div class="chica">de ${(c.precios || 0).toLocaleString('es-MX')} leídos` +
+        (c.clv != null ? ` · CLV ${spct(c.clv)}` : '') + '</div>' },
+    { t: 'Con valor ≥1.5%', num: 1, v: c => `${c.con_valor || 0}<div class="chica">${c.clv_con_valor != null ? 'CLV ' + spct(c.clv_con_valor) : 'sin medir'}` +
+        ` · ${c.con_valor_semana || 0} esta semana</div>` },
+    { t: '¿Apta?', v: c => c.apta ? '<span class="chip bueno">✓ Apta</span>'
+        : `<span class="chip">Aún no</span><div class="chica">necesita ${r.apta_min_con_valor || 30} con valor y CLV +</div>` },
+    { t: 'Cuenta', v: c => c.base ? '<span class="tenue">—</span>' : c.cuenta ? '<span class="chip bueno">✓ Abierta</span>' : '<span class="chip">Sin abrir</span>' },
   ], p.casas, '');
 }
 

@@ -289,6 +289,7 @@ def historiales(con) -> dict:
 def plan_real(con, config: dict) -> dict:
     """Lo que hace falta para pasar a dinero real: cómo van las casas mexicanas (precios leídos, CLV de sus apuestas
     fantasma, mejor valor visto) y la cartera "México real"."""
+    m, hace_semana = config["mexico"], iso(ahora() - timedelta(days=7))
     casas = []
     for c in config["casas_mexico"]:
         n, medidas, clv, gana, mejor, ultima = con.execute(
@@ -296,9 +297,15 @@ def plan_real(con, config: dict) -> dict:
                       MAX(capturado) FROM senales WHERE casa = ?""", (c["clave"],)).fetchone()
         con_valor = con.execute("SELECT COUNT(*), AVG(clv) FROM senales WHERE casa = ? AND valor >= 0.015 AND clv IS NOT NULL",
                                 (c["clave"],)).fetchone()
+        semana = con.execute("SELECT COUNT(*) FROM senales WHERE casa = ? AND valor >= 0.015 AND capturado >= ?",
+                             (c["clave"], hace_semana)).fetchone()[0]
         casas.append({**c, "precios": n, "medidos": medidas, "clv": clv, "gana_cierre": gana, "mejor_valor": mejor,
-                      "ultimo_barrido": ultima, "con_valor": con_valor[0], "clv_con_valor": con_valor[1]})
-    return {"casas": casas}
+                      "ultimo_barrido": ultima, "con_valor": con_valor[0], "clv_con_valor": con_valor[1],
+                      "con_valor_semana": semana,
+                      "apta": con_valor[0] >= m["apta_min_con_valor"] and (con_valor[1] or 0) > 0})
+    mexico_semana = con.execute("""SELECT COUNT(*) FROM apuestas a JOIN estrategias e ON e.nombre = a.estrategia
+                                   WHERE e.rol = 'mexico' AND a.colocada >= ?""", (hace_semana,)).fetchone()[0]
+    return {"casas": casas, "mexico_semana": mexico_semana, "reglas": m}
 
 
 def analisis_apuestas(con, config: dict) -> dict:

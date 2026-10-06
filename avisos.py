@@ -1,4 +1,4 @@
-"""Avisos por Telegram: cada apuesta nueva de la Principal y de "México real" le llega a Diego con botones.
+"""Avisos por Telegram: cada apuesta nueva de "México real" (solo casas permitidas en México) le llega a Diego.
 
 Diego la hace a mano en la app de la casa (las casas no permiten apostar con bots) y contesta con un botón:
 ✅ Caliente / ✅ Codere / ❌ No estaba el momio / ⏭️ Paso. Las respuestas se leen en el siguiente ciclo (cada 5-15 min),
@@ -21,7 +21,7 @@ from datetime import datetime, timedelta, timezone
 import externos
 from base_datos import a_fecha, ahora, anotar, guardar_estado, iso, leer_estado
 
-ROLES = ("principal", "mexico")
+ROLES = ("mexico",)  # solo lo que se puede apostar desde México (la Principal apuesta en casas europeas)
 MAX_POR_CICLO = 8
 RESPUESTAS = {"h": ("hecha", "✅ Apostaste"), "n": ("no_habia", "❌ No cuadró el momio"), "p": ("paso", "⏭️ No apostaste")}
 fallas = 0  # llamadas a Telegram que fallaron en este ciclo
@@ -148,9 +148,9 @@ def _conectar(con, mensaje) -> None:
     chat = mensaje["chat"]["id"]
     guardar_estado(con, "telegram_chat", chat)
     guardar_estado(con, "avisos_desde", con.execute("SELECT COALESCE(MAX(id), 0) FROM apuestas").fetchone()[0])
-    anotar(con, "sistema", "Telegram conectado: desde ahora las apuestas de la Principal y de México real llegan al celular.")
+    anotar(con, "sistema", "Telegram conectado: desde ahora las apuestas de México real (casas permitidas en México) llegan al celular.")
     _llamar("setMyCommands", {"commands": [{"command": "resumen", "description": "Estadísticas de las alertas"}]})
-    _enviar(con, "✅ <b>Conectado.</b>\nTe mando aquí cada apuesta nueva de la Principal y de México real.\n\n"
+    _enviar(con, "✅ <b>Conectado.</b>\nTe mando aquí cada apuesta nueva de México real (solo casas permitidas en México).\n\n"
                  "1. Ábrela en Caliente o Codere y revisa el momio.\n"
                  "2. Si paga lo mínimo o más, hazla con el monto sugerido.\n"
                  "3. Pícale la casa donde la hiciste, ❌ No estaba o ⏭️ Paso.\n\n"
@@ -295,7 +295,7 @@ def _recomendar(a, cuentas, precios, config) -> tuple:
     su casa base); si no, la que pagó más en el último barrido; sin lectura, la primera con cuenta (Caliente abre la
     app directo)."""
     base = next((c.get("base", c["clave"]) for c in config["casas_mexico"] if c["clave"] == a["casa"]), a["casa"])
-    propia = next((c for c in cuentas if c["clave"] == base), None)
+    propia = next((c for c in config["casas_mexico"] if c["clave"] == base), None)  # aunque aún no haya cuenta
     if propia:
         return propia, a["momio_visto"] or a["momio"]
     leidas = [(precios.get(a["evento_id"], {}).get(c["clave"], {}).get(a["seleccion"]), c) for c in cuentas]
@@ -333,17 +333,22 @@ def enviar_nuevas(con, config: dict) -> None:
             break
         casa, momio_casa = _recomendar(a, cuentas, precios, config)
         monto = monto_real(a, config)
-        if casa and disponible.get(casa["clave"], 0) < monto:  # sin saldo: la otra casa si tiene
-            otra = next((c for c in cuentas if disponible.get(c["clave"], 0) >= monto), None)
+        con_cuenta = casa is not None and any(c["clave"] == casa["clave"] for c in cuentas)
+        if con_cuenta and disponible.get(casa["clave"], 0) < monto:  # sin saldo: otra casa con cuenta y el precio
+            otra = next((c for c in cuentas if disponible.get(c["clave"], 0) >= monto
+                         and precios.get(a["evento_id"], {}).get(c["clave"], {}).get(a["seleccion"])), None)
             if otra:
-                casa, momio_casa = otra, precios.get(a["evento_id"], {}).get(otra["clave"], {}).get(a["seleccion"])
+                casa, momio_casa = otra, precios[a["evento_id"]][otra["clave"]][a["seleccion"]]
         texto, monto, minimo = _texto(a, config, (casa["nombre"], momio_casa) if casa else None)
-        if casa and disponible.get(casa["clave"], 0) < monto:
+        if casa and not con_cuenta:
+            texto += f"\n⚠️ Aún no tienes cuenta en {casa['nombre']}"
+        elif casa and disponible.get(casa["clave"], 0) < monto:
             texto += f"\n⚠️ Saldo insuficiente en {casa['nombre']}: ${disponible.get(casa['clave'], 0):,.0f} disponibles"
         if casa:
             disponible[casa["clave"]] = disponible.get(casa["clave"], 0) - monto
-        enlaces = [_boton_casa(con, c, a) for c in cuentas]
-        for b, c in zip(enlaces, cuentas):
+        casas_botones = cuentas + ([casa] if casa and not con_cuenta else [])
+        enlaces = [_boton_casa(con, c, a) for c in casas_botones]
+        for b, c in zip(enlaces, casas_botones):
             if casa and c["clave"] == casa["clave"]:
                 b["text"] = "⭐ " + b["text"]
         botones = [enlaces, [{"text": "✅ Aposté", "callback_data": f"h:{a['id']}"}],
