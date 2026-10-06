@@ -389,8 +389,8 @@ def procesar_externos(con, config: dict, activos: dict, restantes: int) -> int:
     for casa in config["casas_mexico"]:
         datos = externos.cargar(casa["clave"])
         marca = "externo_procesado" if casa["clave"] == "caliente" else f"externo_procesado_{casa['clave']}"
-        if not datos or leer_estado(con, marca) == datos["capturado"]:
-            continue
+        if not datos or not datos.get("partidos") or leer_estado(con, marca) == datos["capturado"]:
+            continue  # sin archivo, vacío (ej. sin momios mejorados) o ya procesado
         guardar_estado(con, marca, datos["capturado"])
         con.commit()
         nombre = casa["nombre"]
