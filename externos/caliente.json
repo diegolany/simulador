@@ -1,145 +1,145 @@
 {
  "casa": "caliente",
- "capturado": "2026-10-05T03:19:12+00:00",
+ "capturado": "2026-10-06T01:17:29+00:00",
  "partidos": [
   {
-   "deporte": "americanfootball",
-   "inicio": "2026-10-06T00:15:00+00:00",
+   "deporte": "icehockey_nhl",
+   "inicio": "2026-10-06T23:30:00+00:00",
    "equipos": [
-    "Atlanta Falcons",
-    "New Orleans Saints"
+    "New York Islanders",
+    "New York Rangers"
    ],
    "momios": {
-    "Atlanta Falcons": 2.1,
-    "New Orleans Saints": 1.8
+    "New York Islanders": 2.85,
+    "New York Rangers": 2.05,
+    "Empate": 3.8
    },
-   "url": "https://sports.caliente.mx/es_MX/e/33286494/Atlanta-Falcons-%40-New-Orleans-Saints"
+   "url": "https://sports.caliente.mx/es_MX/e/33463257/New-York-Islanders-%40-New-York-Rangers"
   },
   {
    "deporte": "icehockey_nhl",
-   "inicio": "2026-10-05T23:30:00+00:00",
+   "inicio": "2026-10-06T23:00:00+00:00",
+   "equipos": [
+    "Nashville Predators",
+    "Toronto Maple Leafs"
+   ],
+   "momios": {
+    "Nashville Predators": 2.85,
+    "Toronto Maple Leafs": 2.05,
+    "Empate": 3.9
+   },
+   "url": "https://sports.caliente.mx/es_MX/e/33463261/Nashville-Predators-%40-Toronto-Maple-Leafs"
+  },
+  {
+   "deporte": "icehockey_nhl",
+   "inicio": "2026-10-06T23:00:00+00:00",
    "equipos": [
     "Ottawa Senators",
-    "Boston Bruins"
+    "Detroit Red Wings"
    ],
    "momios": {
-    "Ottawa Senators": 2.35,
-    "Boston Bruins": 2.4,
+    "Ottawa Senators": 2.4,
+    "Detroit Red Wings": 2.4,
+    "Empate": 3.75
+   },
+   "url": "https://sports.caliente.mx/es_MX/e/33463276/Ottawa-Senators-%40-Detroit-Red-Wings"
+  },
+  {
+   "deporte": "icehockey_nhl",
+   "inicio": "2026-10-07T00:00:00+00:00",
+   "equipos": [
+    "St. Louis Blues",
+    "Chicago Blackhawks"
+   ],
+   "momios": {
+    "St. Louis Blues": 2.2,
+    "Chicago Blackhawks": 2.625,
+    "Empate": 3.75
+   },
+   "url": "https://sports.caliente.mx/es_MX/e/33463277/St.-Louis-Blues-%40-Chicago-Blackhawks"
+  },
+  {
+   "deporte": "icehockey_nhl",
+   "inicio": "2026-10-06T23:00:00+00:00",
+   "equipos": [
+    "Minnesota Wild",
+    "Buffalo Sabres"
+   ],
+   "momios": {
+    "Minnesota Wild": 2.375,
+    "Buffalo Sabres": 2.375,
     "Empate": 3.85
    },
-   "url": "https://sports.caliente.mx/es_MX/e/33448527/Ottawa-Senators-%40-Boston-Bruins"
+   "url": "https://sports.caliente.mx/es_MX/e/33463289/Minnesota-Wild-%40-Buffalo-Sabres"
   },
   {
    "deporte": "icehockey_nhl",
-   "inicio": "2026-10-05T23:30:00+00:00",
+   "inicio": "2026-10-07T01:40:00+00:00",
    "equipos": [
-    "Winnipeg Jets",
-    "Pittsburgh Penguins"
+    "Vegas Golden Knights",
+    "Seattle Kraken"
    ],
    "momios": {
-    "Winnipeg Jets": 3,
-    "Pittsburgh Penguins": 1.9091,
-    "Empate": 4
+    "Vegas Golden Knights": 1.95,
+    "Seattle Kraken": 3,
+    "Empate": 3.95
    },
-   "url": "https://sports.caliente.mx/es_MX/e/33448530/Winnipeg-Jets-%40-Pittsburgh-Penguins"
+   "url": "https://sports.caliente.mx/es_MX/e/33463290/Vegas-Golden-Knights-%40-Seattle-Kraken"
   },
   {
    "deporte": "icehockey_nhl",
-   "inicio": "2026-10-05T23:00:00+00:00",
+   "inicio": "2026-10-06T23:00:00+00:00",
    "equipos": [
-    "Philadelphia Flyers",
-    "Tampa Bay Lightning"
+    "Carolina Hurricanes",
+    "Montreal Canadiens"
    ],
    "momios": {
-    "Philadelphia Flyers": 3.35,
-    "Tampa Bay Lightning": 1.8,
-    "Empate": 4
+    "Carolina Hurricanes": 2.25,
+    "Montreal Canadiens": 2.5,
+    "Empate": 3.85
    },
-   "url": "https://sports.caliente.mx/es_MX/e/33448531/Philadelphia-Flyers-%40-Tampa-Bay-Lightning"
+   "url": "https://sports.caliente.mx/es_MX/e/33463294/Carolina-Hurricanes-%40-Montreal-Canadiens"
   },
   {
    "deporte": "icehockey_nhl",
-   "inicio": "2026-10-06T00:00:00+00:00",
+   "inicio": "2026-10-07T02:00:00+00:00",
    "equipos": [
-    "San Jose Sharks",
-    "Dallas Stars"
+    "Florida Panthers",
+    "Los Angeles Kings"
    ],
    "momios": {
-    "San Jose Sharks": 2.95,
-    "Dallas Stars": 1.95,
-    "Empate": 4
+    "Florida Panthers": 2.3,
+    "Los Angeles Kings": 2.5,
+    "Empate": 3.8
    },
-   "url": "https://sports.caliente.mx/es_MX/e/33448532/San-Jose-Sharks-%40-Dallas-Stars"
+   "url": "https://sports.caliente.mx/es_MX/e/33463295/Florida-Panthers-%40-Los-Angeles-Kings"
   },
   {
-   "deporte": "soccer_argentina_primera_division",
-   "inicio": "2026-10-06T00:15:00+00:00",
+   "deporte": "icehockey_nhl",
+   "inicio": "2026-10-06T23:00:00+00:00",
    "equipos": [
-    "Banfield",
-    "Rosario Central"
+    "Utah Mammoth",
+    "New Jersey Devils"
    ],
    "momios": {
-    "Banfield": 4.2,
-    "Rosario Central": 1.91,
-    "Empate": 3.35
+    "Utah Mammoth": 2.6,
+    "New Jersey Devils": 2.2,
+    "Empate": 3.8
    },
-   "url": "https://sports.caliente.mx/es_MX/e/33321508/Banfield-vs-Rosario-Central"
+   "url": "https://sports.caliente.mx/es_MX/e/33463337/Utah-Mammoth-%40-New-Jersey-Devils"
   },
   {
-   "deporte": "soccer_argentina_primera_division",
-   "inicio": "2026-10-05T22:00:00+00:00",
+   "deporte": "basketball_euroleague",
+   "inicio": "2026-10-07T18:45:00+00:00",
    "equipos": [
-    "Velez Sarsfield",
-    "Platense"
+    "Paris Basketball",
+    "ASVEL Lyon-Villeurbanne"
    ],
    "momios": {
-    "Velez Sarsfield": 1.94,
-    "Platense": 4.65,
-    "Empate": 3.05
+    "Paris Basketball": 1.4,
+    "ASVEL Lyon-Villeurbanne": 2.8
    },
-   "url": "https://sports.caliente.mx/es_MX/e/33321528/Velez-Sarsfield-vs-Platense"
-  },
-  {
-   "deporte": "soccer_argentina_primera_division",
-   "inicio": "2026-10-05T19:45:00+00:00",
-   "equipos": [
-    "Deportivo Riestra",
-    "Central Cordoba"
-   ],
-   "momios": {
-    "Deportivo Riestra": 1.91,
-    "Central Cordoba": 4.45,
-    "Empate": 3.2
-   },
-   "url": "https://sports.caliente.mx/es_MX/e/33321530/Deportivo-Riestra-vs-Central-Cordoba"
-  },
-  {
-   "deporte": "soccer_argentina_primera_division",
-   "inicio": "2026-10-05T22:00:00+00:00",
-   "equipos": [
-    "Estudiantes de La Plata",
-    "Gimnasia y Esgrima Mendoza"
-   ],
-   "momios": {
-    "Estudiantes de La Plata": 1.68,
-    "Gimnasia y Esgrima Mendoza": 5.5,
-    "Empate": 3.5
-   },
-   "url": "https://sports.caliente.mx/es_MX/e/33321531/Estudiantes-de-La-Plata-vs-Gimnasia-y-Esgrima-Mendoza"
-  },
-  {
-   "deporte": "soccer_spain_segunda_division",
-   "inicio": "2026-10-05T18:30:00+00:00",
-   "equipos": [
-    "CF Cordoba",
-    "CD Tenerife"
-   ],
-   "momios": {
-    "CF Cordoba": 1.9,
-    "CD Tenerife": 3.9,
-    "Empate": 3.5
-   },
-   "url": "https://sports.caliente.mx/es_MX/e/33375670/CF-Cordoba-vs-CD-Tenerife"
+   "url": "https://sports.caliente.mx/es_MX/e/33465909/Paris-Basketball-vs-ASVEL-Lyon-Villeurbanne"
   }
  ]
 }
